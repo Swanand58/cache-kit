@@ -1,0 +1,11 @@
+[
+  { "name": "lookup-1", "use_doc": true, "messages": [{ "role": "user", "content": "What is the code for widget 12? Answer with the code only." }], "volatile": "Request time: 2026-10-31T10:00:00Z", "expect": ["W-84"] },
+  { "name": "lookup-2", "use_doc": true, "messages": [{ "role": "user", "content": "What is the code for widget 47? Answer with the code only." }], "volatile": "Request time: 2026-10-31T10:05:00Z", "expect": ["W-329"] },
+  { "name": "arithmetic", "use_doc": true, "messages": [{ "role": "user", "content": "Add the codes' numbers for widgets 3 and 4 (the number after W-). Answer with just the sum." }], "expect": ["49"] },
+  { "name": "multi-turn", "use_doc": true, "messages": [
+      { "role": "user", "content": "Remember the number 7. Reply 'ok'." },
+      { "role": "assistant", "content": "ok" },
+      { "role": "user", "content": "Which widget has the code W-7? Answer with the widget number only." }
+    ], "expect": ["\\b1\\b"] },
+  { "name": "no-doc-freeform", "messages": [{ "role": "user", "content": "In two sentences, explain why a cache needs an eviction policy." }] }
+]

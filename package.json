@@ -1,0 +1,42 @@
+{
+  "name": "cachekit",
+  "version": "0.1.0",
+  "description": "Make Anthropic API calls cache-friendly and explain every cache hit or miss",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "cachekit": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "cachekit.toml"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "eval": "tsx eval/run.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "smol-toml": "^1.9.1"
+  },
+  "peerDependencies": {
+    "@modelcontextprotocol/sdk": "*"
+  },
+  "peerDependenciesMeta": {
+    "@modelcontextprotocol/sdk": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
