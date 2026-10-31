@@ -18,7 +18,8 @@
   },
   "files": [
     "dist",
-    "cachekit.toml"
+    "cachekit.toml",
+    "VERSION"
   ],
   "scripts": {
     "build": "tsc",

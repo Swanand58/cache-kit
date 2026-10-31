@@ -1,26 +1,49 @@
 name: Release
-# Cut a release on GitHub (Releases -> Draft a new release -> tag vX.Y.Z -> Publish) and this publishes it to npm.
+# Actions -> Release -> Run workflow -> type the version (e.g. 0.1.2, no "v"). Writes VERSION + package.json, tests, commits to main, publishes to npm.
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 0.1.2 (no v)"
+        required: true
+        type: string
 jobs:
   publish:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # push the version commit, create the GitHub release
       id-token: write # npm trusted publishing (OIDC): no token or OTP stored anywhere
     steps:
+      - name: Version must look like 1.2.3
+        env:
+          VERSION: ${{ inputs.version }}
+        run: echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "version must be like 0.1.2 (no v), got: $VERSION"; exit 1; }
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - run: npm install -g npm@latest # trusted publishing needs npm >= 11.5.1
-      - name: Tag must match package.json
-        run: |
-          want="v$(node -p "require('./package.json').version")"
-          [ "$GITHUB_REF_NAME" = "$want" ] || { echo "release tag $GITHUB_REF_NAME != package.json $want: bump the version first"; exit 1; }
       - run: npm ci
-      - run: npm test
-      - run: git diff --exit-code dist
+      - name: Write VERSION and package.json
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          echo "$VERSION" > VERSION
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+      - run: npm test # rebuilds dist/ with the new version
+      - name: Commit the version bump to main
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || { git commit -m "Release $VERSION"; git push; }
       - run: npm publish
+      - name: GitHub release (record only; does not trigger anything)
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$VERSION" --target "$(git rev-parse HEAD)" --title "$VERSION" --generate-notes

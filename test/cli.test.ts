@@ -163,8 +163,9 @@ test("last_real_miss.kind after /compact is compaction, not the system-line side
   assert.equal((statusReport(es, "S") as any).last_real_miss.kind, "compaction");
 });
 
-test("--version prints the package.json version (the one npm publishes)", () => {
+test("--version prints the VERSION file, and package.json (what npm publishes) agrees", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  assert.equal(readFileSync("VERSION", "utf8").trim(), pkg.version);
   const r = spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", "--version"], { encoding: "utf8" });
   assert.equal(r.stdout.trim(), pkg.version);
 });
