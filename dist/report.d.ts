@@ -61,6 +61,51 @@ export declare function lastMiss(entries: Entry[], sid?: string): {
 /** One line for a Claude Code status line. */
 export declare function statusLine(entries: Entry[], sid?: string): string;
 /**
+ * `status --json`: the full report for ONE session, plus which session it is and its last miss.
+ * With an explicit `sid` that has no rows this is `{ calls: 0 }`; it never falls back to another session.
+ * Only with no `sid` at all does it use the most recently active session (for humans at a prompt).
+ */
+export declare function statusReport(entries: Entry[], sid?: string): {
+    calls: number;
+} | {
+    calls: number;
+    sessions: number;
+    tokens: {
+        read: number;
+        creation: number;
+        input: number;
+        output: number;
+    };
+    hit_rate: number;
+    cost: number;
+    cost_uncached: number;
+    saved: number;
+    saved_pct: number;
+    misses: number;
+    top_causes: {
+        kind: string;
+        count: number;
+    }[];
+    lineages: {
+        session: string;
+        lineage: string;
+        label: string;
+        calls: number;
+        hit_rate: number;
+    }[];
+    warnings: {
+        warning: string;
+        count: number;
+    }[];
+    advice: string[];
+    session: string;
+    last_miss: {
+        kind: import("./types.js").CauseKind;
+        ts: number;
+        label: string;
+    } | null;
+};
+/**
  * Human-readable log: one line per call, causes indented under misses, then a totals line.
  * `all` is the whole log (so main/sub labels are right even when `shown` is just the tail).
  */
