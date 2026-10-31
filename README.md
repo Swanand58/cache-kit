@@ -1,6 +1,31 @@
-# cachekit
+<h1 align="center">cachekit</h1>
 
-Makes Anthropic API calls cache-friendly and tells you **why** each call hit or missed the prompt cache.
+<p align="center"><b>Find out why your Anthropic prompt cache hit or missed, and make it hit more.</b></p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/cachekit-cli"><img alt="npm version" src="https://img.shields.io/npm/v/cachekit-cli.svg"></a>
+  <a href="https://www.npmjs.com/package/cachekit-cli"><img alt="npm downloads" src="https://img.shields.io/npm/dm/cachekit-cli.svg"></a>
+  <a href="https://github.com/Swanand58/cache-kit/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Swanand58/cache-kit/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/Swanand58/cache-kit/blob/main/LICENSE"><img alt="license: MIT" src="https://img.shields.io/npm/l/cachekit-cli.svg"></a>
+  <img alt="node >=20" src="https://img.shields.io/node/v/cachekit-cli.svg">
+  <img alt="TypeScript types included" src="https://img.shields.io/npm/types/cachekit-cli.svg">
+</p>
+
+Makes Anthropic API calls cache-friendly and tells you **why** each call hit or missed the prompt cache. Cached input tokens cost about 0.1x, so a silent miss (a changed system line, a reordered tool, a TTL expiry) is real money. cachekit sits between your harness and the API, reads the `usage` of every call, diffs the cacheable prefix against the previous call, and names the cause.
+
+```
+$ cachekit log
+10-31 14:02:11  MISS    main claude-opus-5-5   hit   0%  read      0  write  52.1k  in     12  out    340  $0.2674 (uncached $0.2152)
+          └ first_call    first call in this lineage (cold cache)
+10-31 14:02:40  HIT     main claude-opus-5-5   hit  99%  read  52.1k  write    420  in     12  out    300  $0.0186 (uncached $0.2160)
+10-31 14:03:05  MISS    main claude-opus-5-5   hit   0%  read      0  write  52.6k  in     14  out    210  $0.2672 (uncached $0.2143)
+          └ system        system prompt line 14 changed
+10-31 14:11:30  MISS    main claude-opus-5-5   hit   0%  read      0  write  52.9k  in     12  out    180  $0.2682 (uncached $0.2155)
+          └ ttl_expiry    ttl expiry: 505s since the last call, 5m TTL
+```
+<sub>Illustrative numbers; the format is real.</sub>
+
+**Contents:** [Install](#install) · [Quick start: proxy](#quick-start-proxy) · [What it diagnoses](#what-it-diagnoses) · [Library](#library) · [Configuration](#configuration-cachekittoml) · [Keep-alive](#keep-alive-off-by-default) · [How caching works](#how-anthropic-prompt-caching-works-short-version) · [Tests and eval](#tests-and-eval) · [Known limits](#known-limits)
 
 Three ways to use it, in priority order:
 

@@ -1,6 +1,6 @@
 {
   "name": "cachekit-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Make Anthropic API calls cache-friendly and explain every cache hit or miss",
   "license": "MIT",
   "repository": {
@@ -43,5 +43,20 @@
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
-  }
+  },
+  "homepage": "https://github.com/Swanand58/cache-kit#readme",
+  "bugs": {
+    "url": "https://github.com/Swanand58/cache-kit/issues"
+  },
+  "keywords": [
+    "anthropic",
+    "claude",
+    "claude-code",
+    "prompt-caching",
+    "cache",
+    "proxy",
+    "mcp",
+    "llm",
+    "observability"
+  ]
 }
