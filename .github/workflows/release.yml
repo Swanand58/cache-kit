@@ -1,5 +1,6 @@
 name: Release
 # Actions -> Release -> Run workflow -> type the version (e.g. 0.1.2, no "v"). Writes VERSION + package.json, tests, commits to main, publishes to npm.
+# Dry run is on by default: untick it for the real release.
 on:
   workflow_dispatch:
     inputs:
@@ -7,9 +8,13 @@ on:
         description: "Version to release, e.g. 0.1.2 (no v)"
         required: true
         type: string
+      dry_run:
+        description: "Dry run: do everything except push, publish and create the release"
+        type: boolean
+        default: true
 jobs:
   publish:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || inputs.dry_run
     runs-on: ubuntu-latest
     permissions:
       contents: write # push the version commit, create the GitHub release
@@ -18,7 +23,8 @@ jobs:
       - name: Version must look like 1.2.3
         env:
           VERSION: ${{ inputs.version }}
-        run: echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "version must be like 0.1.2 (no v), got: $VERSION"; exit 1; }
+        run: |
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "version must be like 0.1.2 (no v), got: $VERSION"; exit 1; }
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -36,13 +42,15 @@ jobs:
       - name: Commit the version bump to main
         env:
           VERSION: ${{ inputs.version }}
+          DRY: ${{ inputs.dry_run }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git diff --cached --quiet || { git commit -m "Release $VERSION"; git push; }
-      - run: npm publish
+          git diff --cached --quiet || { git commit -m "Release $VERSION"; [ "$DRY" = true ] && echo "dry run: not pushing" || git push; }
+      - run: npm publish ${{ inputs.dry_run && '--dry-run' || '' }}
       - name: GitHub release (record only; does not trigger anything)
+        if: ${{ !inputs.dry_run }}
         env:
           VERSION: ${{ inputs.version }}
           GH_TOKEN: ${{ github.token }}
