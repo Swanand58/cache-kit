@@ -77,23 +77,46 @@ export function statusLine(entries, sid) {
     if (!es.length)
         return "cachekit: no data";
     const t = aggregate(es);
-    const m = lastMiss(entries, sid);
-    return `cache ${(t.hit_rate * 100).toFixed(0)}% hit | saved ${usd(t.saved)} | ${t.calls} calls${m.found ? ` | last miss: ${m.causes[0]?.kind}` : ""}`;
+    const m = lastRealMiss(es);
+    return `cache ${(t.hit_rate * 100).toFixed(0)}% hit | saved ${usd(t.saved)} | ${t.calls} calls${m ? ` | last miss: ${m.kind}` : ""}`;
+}
+/** The "recent" hit rates cover this many most recent calls (token-weighted). */
+export const RECENT_CALLS = 3;
+const ok = (e) => e.kind === "call" && e.status < 400;
+/** Latest miss that is not just a cold start (`first_call`); `kind` is its first non-cold-start cause. */
+export function lastRealMiss(es) {
+    const label = labels(es);
+    for (let i = es.length - 1; i >= 0; i--) {
+        const e = es[i];
+        const c = ok(e) && e.miss ? e.causes.find((x) => x.kind !== "first_call") : undefined;
+        if (c)
+            return { kind: c.kind, ts: e.ts, label: label(e) };
+    }
+    return null;
 }
 /**
- * `status --json`: the full report for ONE session, plus which session it is and its last miss.
+ * `status --json`: the full report for ONE session, plus which session it is and its misses.
  * With an explicit `sid` that has no rows this is `{ calls: 0 }`; it never falls back to another session.
  * Only with no `sid` at all does it use the most recently active session (for humans at a prompt).
+ * `es` must already be that session's rows (see readSession); `sid` just picks it out of a mixed list.
  */
 export function statusReport(entries, sid) {
     const es = sessionEntries(entries, sid);
     if (!es.length)
         return { calls: 0 };
-    const miss = [...es].reverse().find((e) => e.kind === "call" && e.miss);
+    const label = labels(es);
+    const calls = es.filter(ok);
+    const main = calls.filter((e) => label(e) === "main");
+    const rate = (xs) => aggregate(xs).hit_rate;
+    const miss = [...es].reverse().find((e) => ok(e) && e.miss);
     return {
         ...buildReport(es),
         session: es[0].session,
-        last_miss: miss ? { kind: miss.causes[0]?.kind ?? "unknown", ts: miss.ts, label: labels(es)(miss) } : null,
+        main_hit_rate: rate(main),
+        recent_hit_rate: rate(calls.slice(-RECENT_CALLS)),
+        recent_main_hit_rate: rate(main.slice(-RECENT_CALLS)),
+        last_miss: miss ? { kind: miss.causes[0]?.kind ?? "unknown", ts: miss.ts, label: label(miss) } : null,
+        last_real_miss: lastRealMiss(es),
     };
 }
 const n = (x) => (x >= 10000 ? `${(x / 1000).toFixed(1)}k` : String(x));
@@ -115,7 +138,7 @@ export function formatLog(shown, opts = {}) {
         const who = e.kind === "keepalive" ? "keep" : label(e);
         out.push(`${paint("2", when)}  ${tag} ${who.padEnd(4)} ${e.model.padEnd(18)} hit ${(e.hit_rate * 100).toFixed(0).padStart(3)}%  ` +
             `read ${n(u.cache_read_input_tokens).padStart(6)}  write ${n(u.cache_creation_input_tokens).padStart(6)}  in ${n(u.input_tokens).padStart(6)}  out ${n(u.output_tokens).padStart(6)}  ` +
-            `${usd(e.cost.actual)} (uncached ${usd(e.cost.uncached)})` + (multi ? paint("2", `  [${e.session.slice(0, 8)}]`) : ""));
+            `${usd(e.cost.actual)} (uncached ${usd(e.cost.uncached)}${e.cost.actual > e.cost.uncached * 1.0001 ? ", incl. cache-write premium" : ""})` + (multi ? paint("2", `  [${e.session.slice(0, 8)}]`) : ""));
         if (e.error)
             out.push(`          ${paint("33", "error:")} ${e.error}`);
         for (const c of e.causes)
@@ -128,6 +151,6 @@ export function formatLog(shown, opts = {}) {
         }
     }
     const t = aggregate(shown);
-    out.push("", `${t.calls} call(s) | hit rate ${(t.hit_rate * 100).toFixed(1)}% | cost ${usd(t.cost)} vs ${usd(t.uncached)} uncached | saved ${usd(t.saved)} | ${t.misses} miss(es)`);
+    out.push("", `${t.calls} call(s) | hit rate ${(t.hit_rate * 100).toFixed(1)}% | cost ${usd(t.cost)} vs ${usd(t.uncached)} uncached | saved ${usd(t.saved)}${t.saved < 0 ? " (cache writes cost extra until reads repay them)" : ""} | ${t.misses} miss(es)`);
     return out.join("\n");
 }

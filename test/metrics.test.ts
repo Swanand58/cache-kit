@@ -122,3 +122,13 @@ test("formatLog: shows the session only when several sessions are in view; error
   assert.match(many, /ERR 529/);
   assert.match(many, /error: overloaded/);
 });
+
+test("formatLog explains the cache-write premium on a cold call and on a negative total", () => {
+  const cold = entry({ miss: true, usage: usage(0, 1000, 0, 0), cost: { actual: 0.0046, uncached: 0.0023 } });
+  const warm = entry({ usage: usage(1000, 0, 0, 0), cost: { actual: 0.0004, uncached: 0.0023 } });
+  const out = formatLog([cold, warm], { color: false });
+  assert.match(out, /\$0\.0046 \(uncached \$0\.0023, incl\. cache-write premium\)/);
+  assert.match(out, /\$0\.0004 \(uncached \$0\.0023\)(?!, incl)/);
+  assert.doesNotMatch(formatLog([warm], { color: false }), /premium/);
+  assert.match(formatLog([cold], { color: false }), /saved -\$0\.0023 \(cache writes cost extra until reads repay them\)/);
+});

@@ -66,6 +66,56 @@ export function readLog(path, tailBytes) {
     }
     return out;
 }
+/**
+ * All rows of one session (`sid`), or of the most recently active session when `sid` is undefined. Scans the whole
+ * log in 4 MB chunks, but only JSON-parses lines that contain the session's id, so it stays fast and never loses a
+ * session that fell out of a tail window (an id with no rows, e.g. a session that never used the proxy, is just []).
+ * Rows are matched as compact JSON, exactly as Logger writes them.
+ * ponytail: linear in log size (measured: ~0.24 s for an 80 MB log, ~0.07 s for a small one); add rotation or an
+ * index if logs reach hundreds of MB.
+ */
+export function readSession(path, sid) {
+    if (!existsSync(path))
+        return [];
+    const id = sid ?? readLog(path, 1 << 16).at(-1)?.session;
+    if (!id)
+        return [];
+    const needle = Buffer.from(`"session":${JSON.stringify(id)}`);
+    const out = [];
+    const take = (line) => {
+        if (!line.includes(needle))
+            return;
+        try {
+            const e = JSON.parse(line.toString("utf8"));
+            if (e.session === id)
+                out.push(e);
+        }
+        catch { /* torn line */ }
+    };
+    const fd = openSync(path, "r");
+    try {
+        const buf = Buffer.alloc(4 << 20);
+        let carry = Buffer.alloc(0);
+        for (let pos = 0;;) {
+            const n = readSync(fd, buf, 0, buf.length, pos);
+            if (!n)
+                break;
+            pos += n;
+            const data = carry.length ? Buffer.concat([carry, buf.subarray(0, n)]) : buf.subarray(0, n);
+            let start = 0, i;
+            while ((i = data.indexOf(10, start)) >= 0) {
+                take(data.subarray(start, i));
+                start = i + 1;
+            }
+            carry = Buffer.from(data.subarray(start)); // copy: `buf` is reused for the next chunk
+        }
+        take(carry);
+    }
+    finally {
+        closeSync(fd);
+    }
+    return out;
+}
 export const emptyTotals = () => ({ calls: 0, read: 0, creation: 0, input: 0, output: 0, hit_rate: 0, cost: 0, uncached: 0, saved: 0, misses: 0, causes: {} });
 /** Fold one entry into `t` (in place). Keep-alive refreshes count toward cost but not hit rate or call/miss counts. */
 export function addEntry(t, e) {

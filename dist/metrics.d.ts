@@ -16,6 +16,15 @@ export declare class Logger {
 }
 /** Read entries; `tailBytes` limits reading to the end of a large log (status line use). */
 export declare function readLog(path: string, tailBytes?: number): Entry[];
+/**
+ * All rows of one session (`sid`), or of the most recently active session when `sid` is undefined. Scans the whole
+ * log in 4 MB chunks, but only JSON-parses lines that contain the session's id, so it stays fast and never loses a
+ * session that fell out of a tail window (an id with no rows, e.g. a session that never used the proxy, is just []).
+ * Rows are matched as compact JSON, exactly as Logger writes them.
+ * ponytail: linear in log size (measured: ~0.24 s for an 80 MB log, ~0.07 s for a small one); add rotation or an
+ * index if logs reach hundreds of MB.
+ */
+export declare function readSession(path: string, sid?: string): Entry[];
 export interface Totals {
     calls: number;
     read: number;
