@@ -1,6 +1,9 @@
+import type { Cause } from "./types.js";
 import type { Entry } from "./types.js";
 /** Entries of one session: `sid`, else the session with the most recent entry. */
 export declare function sessionEntries(entries: Entry[], sid?: string): Entry[];
+/** Per session, the lineage with the most calls is "main"; others are "sub". */
+export declare function labels(entries: Entry[]): (e: Entry) => "main" | "sub";
 export declare function buildReport(entries: Entry[]): {
     calls: number;
     sessions: number;
@@ -41,7 +44,7 @@ export declare function lastMiss(entries: Entry[], sid?: string): {
     lineage: string;
     label: string;
     model: string;
-    causes: import("./types.js").Cause[];
+    causes: Cause[];
     usage: import("./types.js").Usage;
     gap_s: number | null;
 } | {
@@ -57,3 +60,12 @@ export declare function lastMiss(entries: Entry[], sid?: string): {
 };
 /** One line for a Claude Code status line. */
 export declare function statusLine(entries: Entry[], sid?: string): string;
+/**
+ * Human-readable log: one line per call, causes indented under misses, then a totals line.
+ * `all` is the whole log (so main/sub labels are right even when `shown` is just the tail).
+ */
+export declare function formatLog(shown: Entry[], opts?: {
+    verbose?: boolean;
+    color?: boolean;
+    all?: Entry[];
+}): string;

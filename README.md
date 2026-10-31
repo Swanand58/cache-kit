@@ -46,7 +46,7 @@ cachekit proxy --port 8787                   # observe-only
 ANTHROPIC_BASE_URL=http://localhost:8787 claude
 ```
 
-Every call prints one line on the proxy's stderr and appends one JSON line to `~/.cachekit/log.jsonl`:
+Every call prints one line on the proxy's stderr and appends one JSON line to `~/.cachekit/log.jsonl` (raw JSONL for machines; use `cachekit log` to read it):
 
 ```
 [cachekit] main claude-sonnet-5-5 hit 94% (read 52.1k write 1.2k in 12 out 340) $0.04 vs $0.31 uncached | session 91%
@@ -56,6 +56,7 @@ Every call prints one line on the proxy's stderr and appends one JSON line to `~
 Then:
 
 ```sh
+cachekit log                                   # readable call-by-call log: last 20 calls, causes under each miss (-n 50, --all, -v for rewrites/warnings, --session id)
 cachekit report ~/.cachekit/log.jsonl          # hit rate, cost saved, top causes of misses (--json for machines)
 cachekit status                                # one line for a status line or hook (--json too)
 ```

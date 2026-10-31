@@ -3,13 +3,14 @@ import { parseArgs } from "node:util";
 import { loadConfig } from "./config.js";
 import { readLog } from "./metrics.js";
 import { createProxy } from "./proxy.js";
-import { buildReport, formatReport, sessionEntries, statusLine } from "./report.js";
+import { buildReport, formatLog, formatReport, sessionEntries, statusLine } from "./report.js";
 
 const USAGE = `cachekit <command>
 
   proxy [--port 8787] [--upstream url] [--optimize] [--keepalive] [--config cachekit.toml] [--log file] [--quiet]
         local proxy for Anthropic API traffic; observe-only unless --optimize.
         Point a harness at it:  ANTHROPIC_BASE_URL=http://localhost:8787
+  log [log.jsonl] [-n 20] [-v] [--all] [--session id]   readable call-by-call log (-v adds rewrites/warnings; --all = every call)
   report <log.jsonl> [--json]      hit rate, cost saved, top causes of misses
   status [--log file] [--session id] [--json] [--config file]   one line, for a status line or hook
   mcp [--log file] [--config file]  MCP server (stdio): cache_stats, explain_last_miss`;
@@ -18,7 +19,7 @@ const { values: v, positionals: pos } = parseArgs({
   allowPositionals: true,
   options: {
     port: { type: "string" }, upstream: { type: "string" }, optimize: { type: "boolean" }, keepalive: { type: "boolean" }, config: { type: "string" },
-    log: { type: "string" }, json: { type: "boolean" }, session: { type: "string" }, quiet: { type: "boolean" }, help: { type: "boolean", short: "h" },
+    log: { type: "string" }, json: { type: "boolean" }, session: { type: "string" }, quiet: { type: "boolean" }, lines: { type: "string", short: "n" }, verbose: { type: "boolean", short: "v" }, all: { type: "boolean" }, help: { type: "boolean", short: "h" },
   },
 });
 const [cmd, arg] = pos;
@@ -35,7 +36,7 @@ async function stdinSession(): Promise<string | undefined> {
 }
 
 async function main() {
-  if (!cmd || v.help || !["proxy", "report", "status", "mcp"].includes(cmd)) return void console.log(USAGE);
+  if (!cmd || v.help || !["proxy", "report", "status", "mcp", "log"].includes(cmd)) return void console.log(USAGE);
   const overrides: Record<string, unknown> = {
     ...(v.log ? { log: { path: v.log } } : {}),
     ...(v.quiet ? { log: { quiet: true, ...(v.log ? { path: v.log } : {}) } } : {}),
@@ -52,6 +53,12 @@ async function main() {
       console.error(`log: ${cfg.log.path}\nuse:  ANTHROPIC_BASE_URL=http://localhost:${cfg.proxy.port}`);
     });
     process.on("SIGINT", () => void p.close().then(() => process.exit(0)));
+  } else if (cmd === "log") {
+    const all = readLog(arg ?? cfg.log.path);
+    if (!all.length) return void console.log(`no entries in ${arg ?? cfg.log.path}`);
+    const scoped = v.session ? all.filter((e) => e.session === v.session) : all;
+    const shown = v.all ? scoped : scoped.slice(-(Number(v.lines) || 20));
+    console.log(formatLog(shown, { verbose: v.verbose, color: !!process.stdout.isTTY && !process.env.NO_COLOR, all }));
   } else if (cmd === "report") {
     if (!arg) return void console.log("usage: cachekit report <log.jsonl> [--json]");
     const r = buildReport(readLog(arg));

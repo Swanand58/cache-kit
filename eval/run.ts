@@ -9,7 +9,9 @@
  * `--mock` uses a fake client (no network, no key) to check the plumbing.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { CacheClient } from "../src/client.js";
 
@@ -37,7 +39,7 @@ const fake = (): Anthropic => ({
 
 async function main() {
   const sdk = v.mock ? fake() : new Anthropic();
-  const ck = new CacheClient({ client: sdk, config: { log: { quiet: true } } });
+  const ck = new CacheClient({ client: sdk, config: { log: { quiet: true, path: join(mkdtempSync(join(tmpdir(), "cachekit-eval-")), "log.jsonl") } } });
   const rows: any[] = [];
   for (const p of prompts) {
     // identical content both ways: raw puts the doc after the system prompt and the volatile line at the end of the last user turn, unmarked

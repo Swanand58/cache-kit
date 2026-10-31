@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { History } from "../src/history.js";
 import { aggregate, cost, hitRate, Logger, parseUsage, readLog } from "../src/metrics.js";
-import { buildReport, formatReport, lastMiss, statusLine } from "../src/report.js";
+import { buildReport, formatLog, formatReport, lastMiss, statusLine } from "../src/report.js";
 import type { Entry } from "../src/types.js";
 import { testCfg, tmpLog, usage } from "./helpers.js";
 
@@ -96,3 +96,29 @@ test("history is append-only; compact() summarizes once, warns about the miss, n
   assert.equal(await h.compact(async () => "x", 10, () => {}), false);
 });
 
+
+test("formatLog: one readable line per call, causes under misses, verbose adds rewrites, no ANSI when color is off", () => {
+  const es = [
+    entry({ ts: 1_700_000_000_000, miss: true, usage: usage(0, 52000, 12, 340), causes: [{ kind: "first_call", detail: "first call in this lineage (cold cache)" }], rewrites: ["cache_control(5m) added at end of system"], warnings: ["uuid in system block 0 line 2"] }),
+    entry({ ts: 1_700_000_060_000, usage: usage(52000, 0, 12, 100), hit_rate: 0.99 }),
+  ];
+  const plain = formatLog(es, { color: false });
+  assert.doesNotMatch(plain, /\x1b/);
+  assert.match(plain, /MISS\s+main\s+claude-opus-5-5\s+hit\s+0%\s+read\s+0\s+write\s+52\.0k/);
+  assert.match(plain, /HIT\s+main.*read\s+52\.0k/);
+  assert.match(plain, /\u2514 first_call\s+first call in this lineage/);
+  assert.doesNotMatch(plain, /cache_control\(5m\)/);
+  assert.match(formatLog(es, { color: false, verbose: true }), /~ cache_control\(5m\) added at end of system[\s\S]*! uuid in system/);
+  assert.match(plain, /2 call\(s\) \| hit rate/);
+  assert.match(formatLog(es, { color: true }), /\x1b\[31;1mMISS/);
+});
+
+test("formatLog: shows the session only when several sessions are in view; errors and keep-alives are labelled", () => {
+  const one = formatLog([entry({ session: "aaaaaaaa11" })], { color: false });
+  assert.doesNotMatch(one, /\[aaaaaaaa\]/);
+  const many = formatLog([entry({ session: "aaaaaaaa11" }), entry({ session: "bbbbbbbb22", kind: "keepalive" }), entry({ status: 529, error: "overloaded" })], { color: false });
+  assert.match(many, /\[aaaaaaaa\]/);
+  assert.match(many, /KEEP/);
+  assert.match(many, /ERR 529/);
+  assert.match(many, /error: overloaded/);
+});

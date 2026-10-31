@@ -1,4 +1,5 @@
 import { aggregate, usd } from "./metrics.js";
+import type { Cause } from "./types.js";
 import type { Entry } from "./types.js";
 
 /** Entries of one session: `sid`, else the session with the most recent entry. */
@@ -8,7 +9,7 @@ export function sessionEntries(entries: Entry[], sid?: string): Entry[] {
 }
 
 /** Per session, the lineage with the most calls is "main"; others are "sub". */
-function labels(entries: Entry[]) {
+export function labels(entries: Entry[]) {
   const counts = new Map<string, Map<string, number>>();
   for (const e of entries) {
     if (e.kind !== "call" || e.status >= 400) continue;
@@ -76,4 +77,39 @@ export function statusLine(entries: Entry[], sid?: string): string {
   const t = aggregate(es);
   const m = lastMiss(entries, sid);
   return `cache ${(t.hit_rate * 100).toFixed(0)}% hit | saved ${usd(t.saved)} | ${t.calls} calls${m.found ? ` | last miss: ${(m as any).causes[0]?.kind}` : ""}`;
+}
+
+const n = (x: number) => (x >= 10000 ? `${(x / 1000).toFixed(1)}k` : String(x));
+const two = (x: number) => String(x).padStart(2, "0");
+
+/**
+ * Human-readable log: one line per call, causes indented under misses, then a totals line.
+ * `all` is the whole log (so main/sub labels are right even when `shown` is just the tail).
+ */
+export function formatLog(shown: Entry[], opts: { verbose?: boolean; color?: boolean; all?: Entry[] } = {}): string {
+  const paint = (code: string, s: string) => (opts.color ? `\x1b[${code}m${s}\x1b[0m` : s);
+  const label = labels(opts.all ?? shown);
+  const multi = new Set(shown.map((e) => e.session)).size > 1;
+  const out: string[] = [];
+  for (const e of shown) {
+    const d = new Date(e.ts);
+    const when = `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
+    const tag = e.status >= 400 ? paint("33", `ERR ${e.status}`.padEnd(7)) : e.kind === "keepalive" ? paint("2", "KEEP   ") : e.miss ? paint("31;1", "MISS   ") : paint("32;1", "HIT    ");
+    const u = e.usage;
+    const who = e.kind === "keepalive" ? "keep" : label(e);
+    out.push(
+      `${paint("2", when)}  ${tag} ${who.padEnd(4)} ${e.model.padEnd(18)} hit ${(e.hit_rate * 100).toFixed(0).padStart(3)}%  ` +
+        `read ${n(u.cache_read_input_tokens).padStart(6)}  write ${n(u.cache_creation_input_tokens).padStart(6)}  in ${n(u.input_tokens).padStart(6)}  out ${n(u.output_tokens).padStart(6)}  ` +
+        `${usd(e.cost.actual)} (uncached ${usd(e.cost.uncached)})` + (multi ? paint("2", `  [${e.session.slice(0, 8)}]`) : ""),
+    );
+    if (e.error) out.push(`          ${paint("33", "error:")} ${e.error}`);
+    for (const c of e.causes as Cause[]) out.push(`          ${paint("31", "\u2514")} ${c.kind.padEnd(13)} ${c.detail}`);
+    if (opts.verbose) {
+      for (const r of e.rewrites) out.push(`          ${paint("36", "~")} ${r}`);
+      for (const w of e.warnings) out.push(`          ${paint("33", "!")} ${w}`);
+    }
+  }
+  const t = aggregate(shown);
+  out.push("", `${t.calls} call(s) | hit rate ${(t.hit_rate * 100).toFixed(1)}% | cost ${usd(t.cost)} vs ${usd(t.uncached)} uncached | saved ${usd(t.saved)} | ${t.misses} miss(es)`);
+  return out.join("\n");
 }
