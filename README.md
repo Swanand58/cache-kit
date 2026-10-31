@@ -131,8 +131,8 @@ Each miss gets ordered causes:
 | `model`, `thinking` | model, `thinking`, or `output_config.effort` changed mid-session |
 | `tools`, `tool_order` | `tool \`search\` schema changed`, added/removed, or reordered |
 | `system` | `system prompt line 14 changed` (line numbers, never text) |
-| `compaction` | history shrank or an earlier message changed (harness-side compaction; not an error) |
-| `ttl_expiry` | gap since the last call exceeded the TTL of the last breakpoint (5m or 1h) |
+| `compaction` | history shrank or an earlier message changed (harness-side compaction; not an error). Ranked above `system`/`tools`: `/compact` swaps the system prompt and rewrites history together, and the history is the cause |
+| `ttl_expiry` | gap since the last call exceeded the TTL the request itself asked for (read from its last `cache_control`: Claude Code sets `"ttl": "1h"` on a subscription login and the 5m default on an API-key login) |
 | `parallel` | same prefix in flight before the first response began streaming; **warm the cache with one call, wait for its first streamed token, then fan out** |
 | `no_breakpoint`, `below_min` | no `cache_control` at all, or a breakpoint that wrote nothing (prefix likely under the model minimum) |
 | `first_call` | cold start of a lineage |

@@ -42,6 +42,8 @@ export declare const emptyTotals: () => Totals;
 /** Fold one entry into `t` (in place). Keep-alive refreshes count toward cost but not hit rate or call/miss counts. */
 export declare function addEntry(t: Totals, e: Entry): Totals;
 export declare const aggregate: (entries: Entry[]) => Totals;
-declare const usd: (x: number) => string;
-export { usd };
+declare const usd: (x: number, d?: number) => string;
+/** Two figures that are shown side by side get the same precision ($0.0093 vs $0.0100, not $0.0093 vs $0.01). */
+declare const usdPair: (a: number, b: number) => [string, string];
+export { usd, usdPair };
 export declare function summaryLine(e: Entry, cum: Totals, label: string): string;

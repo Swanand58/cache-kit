@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { History } from "../src/history.js";
-import { aggregate, cost, hitRate, Logger, parseUsage, readLog } from "../src/metrics.js";
+import { aggregate, cost, hitRate, Logger, parseUsage, readLog, summaryLine } from "../src/metrics.js";
 import { buildReport, formatLog, formatReport, lastMiss, statusLine } from "../src/report.js";
 import type { Entry } from "../src/types.js";
 import { testCfg, tmpLog, usage } from "./helpers.js";
@@ -131,4 +131,14 @@ test("formatLog explains the cache-write premium on a cold call and on a negativ
   assert.match(out, /\$0\.0004 \(uncached \$0\.0023\)(?!, incl)/);
   assert.doesNotMatch(formatLog([warm], { color: false }), /premium/);
   assert.match(formatLog([cold], { color: false }), /saved -\$0\.0023 \(cache writes cost extra until reads repay them\)/);
+});
+
+test("a pair of dollar figures shares one precision; the log explains HIT vs MISS", () => {
+  const e = entry({ usage: usage(8400, 0, 12, 300), hit_rate: 0.37, cost: { actual: 0.0093, uncached: 0.01 } });
+  assert.match(summaryLine(e, aggregate([e]), "main"), /\$0\.0093 vs \$0\.0100 uncached/);
+  assert.match(formatLog([e], { color: false }), /\$0\.0093 \(uncached \$0\.0100\)/);
+  assert.match(formatLog([e], { color: false }), /cost \$0\.0093 vs \$0\.0100 uncached/);
+  const big = entry({ cost: { actual: 0.26, uncached: 0.21 } });
+  assert.match(summaryLine(big, aggregate([big]), "main"), /\$0\.26 vs \$0\.21 uncached/);
+  assert.match(formatLog([e], { color: false }), /HIT = something was read from the cache[^\n]*\n[^\n]*first call that reads from another session's cache is a HIT/);
 });

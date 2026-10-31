@@ -1,4 +1,4 @@
-import { aggregate, usd } from "./metrics.js";
+import { aggregate, usd, usdPair } from "./metrics.js";
 import type { Cause } from "./types.js";
 import type { Entry } from "./types.js";
 
@@ -52,7 +52,7 @@ export function formatReport(r: ReturnType<typeof buildReport>): string {
     `calls: ${r.calls} across ${r.sessions} session(s)`,
     `tokens: read ${r.tokens.read}  write ${r.tokens.creation}  uncached-in ${r.tokens.input}  out ${r.tokens.output}`,
     `hit rate: ${pct(r.hit_rate)}`,
-    `cost: ${usd(r.cost)} (would be ${usd(r.cost_uncached)} without caching) -> saved ${usd(r.saved)} (${pct(r.saved_pct)})`,
+    `cost: ${usdPair(r.cost, r.cost_uncached)[0]} (would be ${usdPair(r.cost, r.cost_uncached)[1]} without caching) -> saved ${usd(r.saved)} (${pct(r.saved_pct)})`,
     `misses: ${r.misses}`,
   ];
   if (r.top_causes.length) out.push("", "top causes of misses:", ...r.top_causes.map((c) => `  ${String(c.count).padStart(4)}  ${c.kind}`));
@@ -141,7 +141,7 @@ export function formatLog(shown: Entry[], opts: { verbose?: boolean; color?: boo
     out.push(
       `${paint("2", when)}  ${tag} ${who.padEnd(4)} ${e.model.padEnd(18)} hit ${(e.hit_rate * 100).toFixed(0).padStart(3)}%  ` +
         `read ${n(u.cache_read_input_tokens).padStart(6)}  write ${n(u.cache_creation_input_tokens).padStart(6)}  in ${n(u.input_tokens).padStart(6)}  out ${n(u.output_tokens).padStart(6)}  ` +
-        `${usd(e.cost.actual)} (uncached ${usd(e.cost.uncached)}${e.cost.actual > e.cost.uncached * 1.0001 ? ", incl. cache-write premium" : ""})` + (multi ? paint("2", `  [${e.session.slice(0, 8)}]`) : ""),
+        `${usdPair(e.cost.actual, e.cost.uncached)[0]} (uncached ${usdPair(e.cost.actual, e.cost.uncached)[1]}${e.cost.actual > e.cost.uncached * 1.0001 ? ", incl. cache-write premium" : ""})` + (multi ? paint("2", `  [${e.session.slice(0, 8)}]`) : ""),
     );
     if (e.error) out.push(`          ${paint("33", "error:")} ${e.error}`);
     for (const c of e.causes as Cause[]) out.push(`          ${paint("31", "\u2514")} ${c.kind.padEnd(13)} ${c.detail}`);
@@ -151,6 +151,7 @@ export function formatLog(shown: Entry[], opts: { verbose?: boolean; color?: boo
     }
   }
   const t = aggregate(shown);
-  out.push("", `${t.calls} call(s) | hit rate ${(t.hit_rate * 100).toFixed(1)}% | cost ${usd(t.cost)} vs ${usd(t.uncached)} uncached | saved ${usd(t.saved)}${t.saved < 0 ? " (cache writes cost extra until reads repay them)" : ""} | ${t.misses} miss(es)`);
+  out.push("", paint("2", "HIT = something was read from the cache and not much less than last call; MISS = nothing read, or less than half of what the last call cached."), paint("2", "A first call that reads from another session's cache is a HIT even at a low percentage."));
+  out.push("", `${t.calls} call(s) | hit rate ${(t.hit_rate * 100).toFixed(1)}% | cost ${usdPair(t.cost, t.uncached).join(" vs ")} uncached | saved ${usd(t.saved)}${t.saved < 0 ? " (cache writes cost extra until reads repay them)" : ""} | ${t.misses} miss(es)`);
   return out.join("\n");
 }

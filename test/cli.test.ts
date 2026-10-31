@@ -154,3 +154,11 @@ test("readSession: a torn trailing line and ids that merely contain another id a
   assert.equal(readSession(p, "abc").length, 1);
   assert.equal(readSession(p, "abcdef").length, 1);
 });
+
+test("last_real_miss.kind after /compact is compaction, not the system-line side effect", () => {
+  const es = [
+    call("L0", 1, 0, 1000, { miss: true, causes: [{ kind: "first_call", detail: "" }] }),
+    call("L0", 2, 0, 1000, { miss: true, causes: [{ kind: "compaction", detail: "" }, { kind: "system", detail: "" }] }),
+  ];
+  assert.equal((statusReport(es, "S") as any).last_real_miss.kind, "compaction");
+});

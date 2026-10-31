@@ -228,3 +228,54 @@ test("per-call content after the last breakpoint does not break session or linea
   assert.equal(a.sid, b.sid);
   assert.equal(a.lineage, b.lineage);
 });
+
+// ---- shakedown 2: /compact and Claude Code's real 1h markers ----
+test("/compact: system prompt swap plus rewritten history is reported as compaction first, system second", () => {
+  const { call } = setup();
+  call(baseReq());
+  const after = sysWithLine(1, "You are a helpful assistant that summarizes conversations.");
+  after.messages = [{ role: "user", content: [{ type: "text", text: "[summary]", cache_control: { type: "ephemeral" } }] }];
+  const e = call(after, usage(0, 1000));
+  assert.deepEqual(e.causes.map((c) => c.kind), ["compaction", "system"]);
+  assert.match(e.causes[0].detail, /history shrank from 3 messages to 1/);
+  assert.match(e.causes[1].detail, /system prompt line 1 changed/);
+});
+
+test("model and thinking changes still outrank compaction", () => {
+  const { call } = setup();
+  call(baseReq());
+  const b = baseReq({ model: "claude-sonnet-5-5" }); b.messages = b.messages.slice(1);
+  assert.deepEqual(call(b, usage(0, 1000)).causes.map((c) => c.kind), ["model", "compaction"]);
+});
+
+/** Claude Code on a subscription login: ttl "1h" on system[1], system[2] and the last message (captured from real requests). */
+const claudeCodeSubscription = () => {
+  const r = baseReq();
+  const sys = r.system as any[];
+  sys[0].cache_control = { type: "ephemeral", ttl: "1h" };
+  (r.messages[2].content as any[])[0].cache_control = { type: "ephemeral", ttl: "1h" };
+  return r;
+};
+
+test("subscription markers (ttl 1h everywhere): a 5.5 minute idle gap is not an expiry, a 61 minute one is", () => {
+  const { call, advance } = setup();
+  const first = call(claudeCodeSubscription());
+  assert.equal(first.ttl, "1h");
+  advance(330_000);
+  const hit = call(claudeCodeSubscription(), usage(1000, 0));
+  assert.equal(hit.miss, false);
+  advance(330_000);
+  const unexplained = call(claudeCodeSubscription(), usage(0, 1000));
+  assert.deepEqual(unexplained.causes.map((c) => c.kind), ["unknown"], "5.5 minutes does not expire a 1h entry");
+  advance(61 * 60_000);
+  const expired = call(claudeCodeSubscription(), usage(0, 1000));
+  assert.deepEqual(expired.causes.map((c) => c.kind), ["ttl_expiry"]);
+  assert.match(expired.causes[0].detail, /1h TTL/);
+});
+
+test("API-key markers (no ttl field = 5m): the same 5.5 minute gap is an expiry", () => {
+  const { call, advance } = setup();
+  assert.equal(call(baseReq()).ttl, "5m");
+  advance(330_000);
+  assert.deepEqual(call(baseReq(), usage(0, 1000)).causes.map((c) => c.kind), ["ttl_expiry"]);
+});

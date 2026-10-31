@@ -1,5 +1,5 @@
 import { modelCfg, writePrice } from "./config.js";
-import { cost, hitRate, usd } from "./metrics.js";
+import { cost, hitRate, usdPair } from "./metrics.js";
 /**
  * Optional TTL keep-alive: replays the last request with max_tokens 0 (prefill only, no output billed) shortly before
  * the cache entry would expire. Stops once refreshes have cost more than one re-write would, so it can't spend
@@ -36,7 +36,7 @@ export class KeepAlive {
         const maxN = Math.min(this.cfg.keepalive.max_refreshes, Math.floor(rewrite / refresh) || 0);
         if (!st.announced) {
             st.announced = true;
-            this.say(`[cachekit] keep-alive: each refresh ~${usd(refresh)} vs ~${usd(rewrite)} to re-write ${prefix} tokens after expiry; worth it for up to ${maxN} refreshes (~${Math.round((maxN * ttlMs) / 60000)} min idle)`);
+            this.say(`[cachekit] keep-alive: each refresh ~${usdPair(refresh, rewrite)[0]} vs ~${usdPair(refresh, rewrite)[1]} to re-write ${prefix} tokens after expiry; worth it for up to ${maxN} refreshes (~${Math.round((maxN * ttlMs) / 60000)} min idle)`);
         }
         if (maxN < 1)
             return;
@@ -64,7 +64,7 @@ export class KeepAlive {
             cost: c, prefix_hash: ctx.snap.prefix, ttl: ctx.snap.ttl, rewrites: [], warnings: [],
         });
         if (st.refreshes >= maxN || st.spent + refresh > rewrite) {
-            return void this.say(`[cachekit] keep-alive stopped for ${key}: ${st.refreshes} refreshes cost ${usd(st.spent)}, about one re-write (${usd(rewrite)}); letting the cache expire`);
+            return void this.say(`[cachekit] keep-alive stopped for ${key}: ${st.refreshes} refreshes cost ${usdPair(st.spent, rewrite)[0]}, about one re-write (${usdPair(st.spent, rewrite)[1]}); letting the cache expire`);
         }
         st.timer = setTimeout(() => void this.fire(key, ctx, req, headers, path, prefix, refresh, rewrite, maxN, ttlMs), Math.max(1000, ttlMs - this.cfg.keepalive.margin_seconds * 1000));
         st.timer.unref();

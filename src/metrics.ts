@@ -127,12 +127,17 @@ export function addEntry(t: Totals, e: Entry): Totals {
 
 export const aggregate = (entries: Entry[]): Totals => entries.reduce(addEntry, emptyTotals());
 
-const usd = (x: number) => `${x < 0 ? "-" : ""}$${Math.abs(x) < 0.01 ? Math.abs(x).toFixed(4) : Math.abs(x).toFixed(2)}`;
+const usd = (x: number, d = Math.abs(x) < 0.01 ? 4 : 2) => `${x < 0 ? "-" : ""}$${Math.abs(x).toFixed(d)}`;
+/** Two figures that are shown side by side get the same precision ($0.0093 vs $0.0100, not $0.0093 vs $0.01). */
+const usdPair = (a: number, b: number): [string, string] => {
+  const d = Math.max(Math.abs(a), Math.abs(b)) < 0.1 ? 4 : 2;
+  return [usd(a, d), usd(b, d)];
+};
 const k = (x: number) => (x >= 10000 ? `${(x / 1000).toFixed(1)}k` : String(x));
-export { usd };
+export { usd, usdPair };
 
 export function summaryLine(e: Entry, cum: Totals, label: string): string {
   const u = e.usage;
-  const base = `[cachekit] ${label} ${e.model} hit ${(e.hit_rate * 100).toFixed(0)}% (read ${k(u.cache_read_input_tokens)} write ${k(u.cache_creation_input_tokens)} in ${k(u.input_tokens)} out ${k(u.output_tokens)}) ${usd(e.cost.actual)} vs ${usd(e.cost.uncached)} uncached | session ${(cum.hit_rate * 100).toFixed(0)}%`;
+  const base = `[cachekit] ${label} ${e.model} hit ${(e.hit_rate * 100).toFixed(0)}% (read ${k(u.cache_read_input_tokens)} write ${k(u.cache_creation_input_tokens)} in ${k(u.input_tokens)} out ${k(u.output_tokens)}) ${usdPair(e.cost.actual, e.cost.uncached).join(" vs ")} uncached | session ${(cum.hit_rate * 100).toFixed(0)}%`;
   return e.miss ? `${base} | MISS: ${e.causes.map((c: Cause) => c.detail).join("; ")}` : base;
 }
