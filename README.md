@@ -16,17 +16,21 @@ Not on npm yet; install straight from GitHub (the built `dist/` is committed, so
 
 ```sh
 # CLI / proxy, on your PATH
-npm install -g https://codeload.github.com/Swanand58/cache-kit/tar.gz/refs/heads/main
-cachekit --help
+npm install -g cachekit-cli
+cachekit --help          # the command is `cachekit`
 
 # or as a library in your project
-npm install github:Swanand58/cache-kit
+npm install cachekit-cli
 
 # optional, only for `cachekit mcp`
 npm install -g @modelcontextprotocol/sdk
 ```
 
-Use the tarball URL for the global install: on npm 11.4.2, `npm install -g github:Swanand58/cache-kit` leaves a dangling link to a deleted temp clone (the `github:` form is fine as a project dependency).
+The npm package is `cachekit-cli`; the command it installs is `cachekit`. To try the latest unreleased code straight from GitHub, use the tarball URL (on npm 11.4.2 the `github:` shorthand leaves a dangling link when installed with `-g`):
+
+```sh
+npm install -g https://codeload.github.com/Swanand58/cache-kit/tar.gz/refs/heads/main
+```
 
 From a clone (for development):
 
@@ -104,7 +108,7 @@ A call also counts as a miss when `cache_read_input_tokens` falls below half of 
 ## Library
 
 ```ts
-import { CacheClient, History } from "cachekit";
+import { CacheClient, History } from "cachekit-cli";
 
 const ck = new CacheClient({ config: "cachekit.toml" });   // or wrap(anthropic) to keep the SDK client's shape
 
