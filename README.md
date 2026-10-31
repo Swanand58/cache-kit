@@ -7,7 +7,7 @@
   <a href="https://www.npmjs.com/package/cachekit-cli"><img alt="npm downloads" src="https://img.shields.io/npm/dm/cachekit-cli.svg"></a>
   <a href="https://github.com/Swanand58/cache-kit/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Swanand58/cache-kit/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/Swanand58/cache-kit/blob/main/LICENSE"><img alt="license: MIT" src="https://img.shields.io/npm/l/cachekit-cli.svg"></a>
-  <img alt="node >=20" src="https://img.shields.io/node/v/cachekit-cli.svg">
+  <img alt="node 20 or newer" src="https://img.shields.io/node/v/cachekit-cli.svg">
   <img alt="TypeScript types included" src="https://img.shields.io/npm/types/cachekit-cli.svg">
 </p>
 
