@@ -16,7 +16,7 @@ Not on npm yet; install straight from GitHub (the built `dist/` is committed, so
 
 ```sh
 # CLI / proxy, on your PATH
-npm install -g github:Swanand58/cache-kit
+npm install -g https://codeload.github.com/Swanand58/cache-kit/tar.gz/refs/heads/main
 cachekit --help
 
 # or as a library in your project
@@ -25,6 +25,8 @@ npm install github:Swanand58/cache-kit
 # optional, only for `cachekit mcp`
 npm install -g @modelcontextprotocol/sdk
 ```
+
+Use the tarball URL for the global install: on npm 11.4.2, `npm install -g github:Swanand58/cache-kit` leaves a dangling link to a deleted temp clone (the `github:` form is fine as a project dependency).
 
 From a clone (for development):
 
