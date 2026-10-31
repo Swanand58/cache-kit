@@ -87,10 +87,12 @@ Then:
 ```sh
 cachekit log                                   # readable call-by-call log: last 20 calls, causes under each miss (-n 50, --all, -v for rewrites/warnings, --session id)
 cachekit report ~/.cachekit/log.jsonl          # hit rate, cost saved, top causes of misses (--json for machines)
-cachekit status                                # one line for a status line or hook (--json too)
+cachekit status [--session id] [--json]        # one line for a status line or hook
 ```
 
-Claude Code status line (`~/.claude/settings.json`): `"statusLine": { "type": "command", "command": "cachekit status" }`. It reads `session_id` from stdin when present and otherwise uses the latest session. (The stdin path is untested against a live Claude Code status line; the fallback is.)
+Claude Code status line (`~/.claude/settings.json`): `"statusLine": { "type": "command", "command": "cachekit status" }`. The session is chosen by `--session <id>`, else by `session_id` in the JSON on stdin (Claude Code's `session_id` is the same id cachekit logs), else the most recently active session. **An id that is given but has no rows is never replaced by another session**: the output is `cachekit: no data` (or `{"calls": 0}` with `--json`), exit 0, so sessions that don't go through the proxy show nothing.
+
+`cachekit status --json --session <id>` returns that session's report (hit rate for that session only) plus `"session"` and `"last_miss"`: `{"kind": "ttl_expiry", "ts": 1793471580154, "label": "main"}` (`ts` in the same format as the log, `label` `main` or `sub`), or `null` if the session never missed.
 
 MCP, so the agent can ask about its own cache: `claude mcp add cachekit -- cachekit mcp`. Tools: `cache_stats`, `explain_last_miss`. They read the same JSONL log the proxy writes.
 

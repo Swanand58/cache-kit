@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { loadConfig } from "./config.js";
 import { readLog } from "./metrics.js";
 import { createProxy } from "./proxy.js";
-import { buildReport, formatLog, formatReport, sessionEntries, statusLine } from "./report.js";
+import { buildReport, formatLog, formatReport, statusLine, statusReport } from "./report.js";
 
 const USAGE = `cachekit <command>
 
@@ -13,6 +13,7 @@ const USAGE = `cachekit <command>
   log [log.jsonl] [-n 20] [-v] [--all] [--session id]   readable call-by-call log (-v adds rewrites/warnings; --all = every call)
   report <log.jsonl> [--json]      hit rate, cost saved, top causes of misses
   status [--log file] [--session id] [--json] [--config file]   one line, for a status line or hook
+        an unknown --session id (or stdin session_id) prints "no data" / {"calls": 0}; no id = latest session
   mcp [--log file] [--config file]  MCP server (stdio): cache_stats, explain_last_miss`;
 
 const { values: v, positionals: pos } = parseArgs({
@@ -64,11 +65,12 @@ async function main() {
     const r = buildReport(readLog(arg));
     print(formatReport(r), r);
   } else if (cmd === "status") {
+    // ponytail: reads the last 1 MB of the log; a session whose rows all fell out of that tail shows "no data"
     const es = readLog(cfg.log.path, 1 << 20);
-    // as a Claude Code status line, stdin carries {"session_id": ...}; fall back to the latest session if it has no data
-    let sid = v.session ?? (await stdinSession());
-    if (sid && !es.some((e) => e.session === sid)) sid = undefined;
-    print(statusLine(es, sid), buildReport(sessionEntries(es, sid)));
+    // as a Claude Code status line, stdin carries {"session_id": ...}. An id that is given but has no rows means
+    // "no data", never another session's numbers. With no id at all, the latest session is used.
+    const sid = v.session ?? (await stdinSession());
+    print(statusLine(es, sid), statusReport(es, sid));
   } else if (cmd === "mcp") {
     try { await import("@modelcontextprotocol/sdk/server/index.js"); }
     catch { throw new Error("`cachekit mcp` needs the optional dependency: npm install -g @modelcontextprotocol/sdk"); }

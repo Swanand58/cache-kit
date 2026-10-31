@@ -79,6 +79,22 @@ export function statusLine(entries: Entry[], sid?: string): string {
   return `cache ${(t.hit_rate * 100).toFixed(0)}% hit | saved ${usd(t.saved)} | ${t.calls} calls${m.found ? ` | last miss: ${(m as any).causes[0]?.kind}` : ""}`;
 }
 
+/**
+ * `status --json`: the full report for ONE session, plus which session it is and its last miss.
+ * With an explicit `sid` that has no rows this is `{ calls: 0 }`; it never falls back to another session.
+ * Only with no `sid` at all does it use the most recently active session (for humans at a prompt).
+ */
+export function statusReport(entries: Entry[], sid?: string) {
+  const es = sessionEntries(entries, sid);
+  if (!es.length) return { calls: 0 };
+  const miss = [...es].reverse().find((e) => e.kind === "call" && e.miss);
+  return {
+    ...buildReport(es),
+    session: es[0].session,
+    last_miss: miss ? { kind: miss.causes[0]?.kind ?? "unknown", ts: miss.ts, label: labels(es)(miss) } : null,
+  };
+}
+
 const n = (x: number) => (x >= 10000 ? `${(x / 1000).toFixed(1)}k` : String(x));
 const two = (x: number) => String(x).padStart(2, "0");
 
