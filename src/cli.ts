@@ -4,6 +4,7 @@ import { loadConfig } from "./config.js";
 import { readLog, readSession } from "./metrics.js";
 import { createProxy } from "./proxy.js";
 import { buildReport, formatLog, formatReport, statusLine, statusReport } from "./report.js";
+import { VERSION } from "./version.js";
 
 const USAGE = `cachekit <command>
 
@@ -14,13 +15,14 @@ const USAGE = `cachekit <command>
   report <log.jsonl> [--json]      hit rate, cost saved, top causes of misses
   status [--log file] [--session id] [--json] [--config file]   one line, for a status line or hook
         an unknown --session id (or stdin session_id) prints "no data" / {"calls": 0}; no id = latest session
-  mcp [--log file] [--config file]  MCP server (stdio): cache_stats, explain_last_miss`;
+  mcp [--log file] [--config file]  MCP server (stdio): cache_stats, explain_last_miss
+  --version                        print the installed version`;
 
 const { values: v, positionals: pos } = parseArgs({
   allowPositionals: true,
   options: {
     port: { type: "string" }, upstream: { type: "string" }, optimize: { type: "boolean" }, keepalive: { type: "boolean" }, config: { type: "string" },
-    log: { type: "string" }, json: { type: "boolean" }, session: { type: "string" }, quiet: { type: "boolean" }, lines: { type: "string", short: "n" }, verbose: { type: "boolean", short: "v" }, all: { type: "boolean" }, help: { type: "boolean", short: "h" },
+    log: { type: "string" }, json: { type: "boolean" }, session: { type: "string" }, quiet: { type: "boolean" }, lines: { type: "string", short: "n" }, verbose: { type: "boolean", short: "v" }, all: { type: "boolean" }, help: { type: "boolean", short: "h" }, version: { type: "boolean" },
   },
 });
 const [cmd, arg] = pos;
@@ -37,6 +39,7 @@ async function stdinSession(): Promise<string | undefined> {
 }
 
 async function main() {
+  if (v.version) return void console.log(VERSION);
   if (!cmd || v.help || !["proxy", "report", "status", "mcp", "log"].includes(cmd)) return void console.log(USAGE);
   const overrides: Record<string, unknown> = {
     ...(v.log ? { log: { path: v.log } } : {}),

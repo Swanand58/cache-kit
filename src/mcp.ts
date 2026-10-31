@@ -1,5 +1,6 @@
 import { readLog } from "./metrics.js";
 import { buildReport, lastMiss, sessionEntries } from "./report.js";
+import { VERSION } from "./version.js";
 
 /**
  * MCP server (stdio) with `cache_stats` and `explain_last_miss`. Reads the proxy's JSONL log, so it works from any
@@ -10,7 +11,7 @@ export async function runMcp(logPath: string) {
   const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
   const { CallToolRequestSchema, ListToolsRequestSchema } = await import("@modelcontextprotocol/sdk/types.js");
 
-  const server = new Server({ name: "cachekit", version: "0.1.0" }, { capabilities: { tools: {} } });
+  const server = new Server({ name: "cachekit", version: VERSION }, { capabilities: { tools: {} } });
   const schema = { type: "object", properties: { session: { type: "string", description: "Session id; default: the most recently active session" } } };
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
