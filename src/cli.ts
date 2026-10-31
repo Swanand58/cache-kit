@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { loadConfig } from "./config.js";
-import { readLog } from "./metrics.js";
+import { readLog, readSession } from "./metrics.js";
 import { createProxy } from "./proxy.js";
 import { buildReport, formatLog, formatReport, statusLine, statusReport } from "./report.js";
 
@@ -65,11 +65,10 @@ async function main() {
     const r = buildReport(readLog(arg));
     print(formatReport(r), r);
   } else if (cmd === "status") {
-    // ponytail: reads the last 1 MB of the log; a session whose rows all fell out of that tail shows "no data"
-    const es = readLog(cfg.log.path, 1 << 20);
     // as a Claude Code status line, stdin carries {"session_id": ...}. An id that is given but has no rows means
     // "no data", never another session's numbers. With no id at all, the latest session is used.
     const sid = v.session ?? (await stdinSession());
+    const es = readSession(cfg.log.path, sid);
     print(statusLine(es, sid), statusReport(es, sid));
   } else if (cmd === "mcp") {
     try { await import("@modelcontextprotocol/sdk/server/index.js"); }

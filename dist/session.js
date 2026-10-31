@@ -2,7 +2,8 @@ import { hash, systemText, blocksOf } from "./normalize.js";
 import { addEntry, cost, emptyTotals, hitRate } from "./metrics.js";
 import { diff, snapshot } from "./prefix.js";
 const ZERO = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
-const ORDER = ["model", "thinking", "tools", "tool_order", "system", "compaction", "ttl_expiry", "parallel", "no_breakpoint", "below_min", "first_call", "unknown"];
+// compaction outranks system/tools: /compact swaps the system prompt and rewrites history in one go, and the history is the cause
+const ORDER = ["model", "thinking", "compaction", "tools", "tool_order", "system", "ttl_expiry", "parallel", "no_breakpoint", "below_min", "first_call", "unknown"];
 const jaccard = (a, b) => {
     if (!a.size && !b.size)
         return 1;

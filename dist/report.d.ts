@@ -60,10 +60,19 @@ export declare function lastMiss(entries: Entry[], sid?: string): {
 };
 /** One line for a Claude Code status line. */
 export declare function statusLine(entries: Entry[], sid?: string): string;
+/** The "recent" hit rates cover this many most recent calls (token-weighted). */
+export declare const RECENT_CALLS = 3;
+/** Latest miss that is not just a cold start (`first_call`); `kind` is its first non-cold-start cause. */
+export declare function lastRealMiss(es: Entry[]): {
+    kind: import("./types.js").CauseKind;
+    ts: number;
+    label: string;
+} | null;
 /**
- * `status --json`: the full report for ONE session, plus which session it is and its last miss.
+ * `status --json`: the full report for ONE session, plus which session it is and its misses.
  * With an explicit `sid` that has no rows this is `{ calls: 0 }`; it never falls back to another session.
  * Only with no `sid` at all does it use the most recently active session (for humans at a prompt).
+ * `es` must already be that session's rows (see readSession); `sid` just picks it out of a mixed list.
  */
 export declare function statusReport(entries: Entry[], sid?: string): {
     calls: number;
@@ -99,7 +108,15 @@ export declare function statusReport(entries: Entry[], sid?: string): {
     }[];
     advice: string[];
     session: string;
+    main_hit_rate: number;
+    recent_hit_rate: number;
+    recent_main_hit_rate: number;
     last_miss: {
+        kind: import("./types.js").CauseKind;
+        ts: number;
+        label: string;
+    } | null;
+    last_real_miss: {
         kind: import("./types.js").CauseKind;
         ts: number;
         label: string;

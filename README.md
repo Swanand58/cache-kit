@@ -92,7 +92,19 @@ cachekit status [--session id] [--json]        # one line for a status line or h
 
 Claude Code status line (`~/.claude/settings.json`): `"statusLine": { "type": "command", "command": "cachekit status" }`. The session is chosen by `--session <id>`, else by `session_id` in the JSON on stdin (Claude Code's `session_id` is the same id cachekit logs), else the most recently active session. **An id that is given but has no rows is never replaced by another session**: the output is `cachekit: no data` (or `{"calls": 0}` with `--json`), exit 0, so sessions that don't go through the proxy show nothing.
 
-`cachekit status --json --session <id>` returns that session's report (hit rate for that session only) plus `"session"` and `"last_miss"`: `{"kind": "ttl_expiry", "ts": 1793471580154, "label": "main"}` (`ts` in the same format as the log, `label` `main` or `sub`), or `null` if the session never missed.
+`cachekit status --json --session <id>` returns that session's report plus:
+
+| field | meaning |
+|---|---|
+| `session` | the id it reported on |
+| `hit_rate` | cumulative for the session (a cold start drags it down for a long time) |
+| `main_hit_rate` | cumulative, main chain only (subagents excluded), token-weighted |
+| `recent_hit_rate` | last 3 calls of the session, token-weighted: the *current* state |
+| `recent_main_hit_rate` | last 3 main-chain calls, token-weighted: what your next message will re-send |
+| `last_miss` | newest miss of any kind, `{"kind", "ts", "label"}` (`ts` as in the log, `label` `main` or `sub`), or `null` |
+| `last_real_miss` | same shape, but skips cold starts (`first_call`), so a subagent starting up doesn't hide a real problem |
+
+The text line (`cache 94% hit | ... | last miss: ttl_expiry`) also shows only real misses. `status` scans the whole log for the session's rows (they never fall out of a window); a session that never used the proxy is just `no data`. Measured: about 0.07 s on a small log, about 0.24 s on an 80 MB log (roughly 150,000 calls; a row is ~0.5 KB, ~1 KB with `--optimize` rewrite notes).
 
 MCP, so the agent can ask about its own cache: `claude mcp add cachekit -- cachekit mcp`. Tools: `cache_stats`, `explain_last_miss`. They read the same JSONL log the proxy writes.
 
@@ -119,8 +131,8 @@ Each miss gets ordered causes:
 | `model`, `thinking` | model, `thinking`, or `output_config.effort` changed mid-session |
 | `tools`, `tool_order` | `tool \`search\` schema changed`, added/removed, or reordered |
 | `system` | `system prompt line 14 changed` (line numbers, never text) |
-| `compaction` | history shrank or an earlier message changed (harness-side compaction; not an error) |
-| `ttl_expiry` | gap since the last call exceeded the TTL of the last breakpoint (5m or 1h) |
+| `compaction` | history shrank or an earlier message changed (harness-side compaction; not an error). Ranked above `system`/`tools`: `/compact` swaps the system prompt and rewrites history together, and the history is the cause |
+| `ttl_expiry` | gap since the last call exceeded the TTL the request itself asked for (read from its last `cache_control`: Claude Code sets `"ttl": "1h"` on a subscription login and the 5m default on an API-key login) |
 | `parallel` | same prefix in flight before the first response began streaming; **warm the cache with one call, wait for its first streamed token, then fan out** |
 | `no_breakpoint`, `below_min` | no `cache_control` at all, or a breakpoint that wrote nothing (prefix likely under the model minimum) |
 | `first_call` | cold start of a lineage |
