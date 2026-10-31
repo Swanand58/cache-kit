@@ -2,6 +2,11 @@
   "name": "cachekit",
   "version": "0.1.0",
   "description": "Make Anthropic API calls cache-friendly and explain every cache hit or miss",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Swanand58/cache-kit.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=20"
