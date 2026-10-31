@@ -63,6 +63,8 @@ async function main() {
     if (sid && !es.some((e) => e.session === sid)) sid = undefined;
     print(statusLine(es, sid), buildReport(sessionEntries(es, sid)));
   } else if (cmd === "mcp") {
+    try { await import("@modelcontextprotocol/sdk/server/index.js"); }
+    catch { throw new Error("`cachekit mcp` needs the optional dependency: npm install -g @modelcontextprotocol/sdk"); }
     await (await import("./mcp.js")).runMcp(cfg.log.path);
   }
 }

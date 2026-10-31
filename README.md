@@ -10,10 +10,35 @@ Three ways to use it, in priority order:
 
 Node >= 20 (zstd response decoding needs a Node that ships `zlib.createZstdDecompress`, e.g. 22.15+/24). Dependencies: `@anthropic-ai/sdk`, `smol-toml`. `@modelcontextprotocol/sdk` is an optional peer, needed only for `cachekit mcp`.
 
+## Install
+
+Not on npm yet; install straight from GitHub (it builds on install):
+
+```sh
+# CLI / proxy, on your PATH
+npm install -g github:Swanand58/cache-kit
+cachekit --help
+
+# or as a library in your project
+npm install github:Swanand58/cache-kit
+
+# optional, only for `cachekit mcp`
+npm install -g @modelcontextprotocol/sdk
+```
+
+From a clone (for development):
+
+```sh
+git clone https://github.com/Swanand58/cache-kit.git
+cd cache-kit
+npm install        # also runs the build
+npm test           # 83 tests, no network
+npm link           # puts `cachekit` on your PATH
+```
+
 ## Quick start: proxy
 
 ```sh
-npm install && npm run build && npm link     # puts `cachekit` on your PATH
 cachekit proxy --port 8787                   # observe-only
 # in another shell, any harness:
 ANTHROPIC_BASE_URL=http://localhost:8787 claude
