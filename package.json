@@ -16,10 +16,9 @@
     "cachekit.toml"
   ],
   "scripts": {
-    "prepare": "npm run build",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "npm run build && node --import tsx --test test/*.test.ts",
     "eval": "tsx eval/run.ts"
   },
   "dependencies": {

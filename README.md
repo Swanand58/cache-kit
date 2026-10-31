@@ -12,7 +12,7 @@ Node >= 20 (zstd response decoding needs a Node that ships `zlib.createZstdDecom
 
 ## Install
 
-Not on npm yet; install straight from GitHub (it builds on install):
+Not on npm yet; install straight from GitHub (the built `dist/` is committed, so nothing compiles on your machine):
 
 ```sh
 # CLI / proxy, on your PATH
@@ -31,8 +31,8 @@ From a clone (for development):
 ```sh
 git clone https://github.com/Swanand58/cache-kit.git
 cd cache-kit
-npm install        # also runs the build
-npm test           # 83 tests, no network
+npm install
+npm test           # rebuilds dist/, then runs 83 tests, no network
 npm link           # puts `cachekit` on your PATH
 ```
 
