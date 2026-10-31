@@ -1,5 +1,5 @@
 {
-  "name": "cachekit",
+  "name": "cachekit-cli",
   "version": "0.1.0",
   "description": "Make Anthropic API calls cache-friendly and explain every cache hit or miss",
   "license": "MIT",
