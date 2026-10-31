@@ -1,5 +1,5 @@
 name: Release
-# Actions -> Release -> Run workflow -> type the version (e.g. 0.1.2, no "v"). Bumps package.json, tests, commits to main, publishes to npm.
+# Actions -> Release -> Run workflow -> type the version (e.g. 0.1.2, no "v"). Writes VERSION + package.json, tests, commits to main, publishes to npm.
 on:
   workflow_dispatch:
     inputs:
@@ -26,9 +26,12 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install -g npm@latest # trusted publishing needs npm >= 11.5.1
       - run: npm ci
-      - run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+      - name: Write VERSION and package.json
         env:
           VERSION: ${{ inputs.version }}
+        run: |
+          echo "$VERSION" > VERSION
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
       - run: npm test # rebuilds dist/ with the new version
       - name: Commit the version bump to main
         env:
