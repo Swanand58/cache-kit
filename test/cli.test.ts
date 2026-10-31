@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import type { Entry } from "../src/types.js";
 import { readSession } from "../src/metrics.js";
@@ -161,4 +161,10 @@ test("last_real_miss.kind after /compact is compaction, not the system-line side
     call("L0", 2, 0, 1000, { miss: true, causes: [{ kind: "compaction", detail: "" }, { kind: "system", detail: "" }] }),
   ];
   assert.equal((statusReport(es, "S") as any).last_real_miss.kind, "compaction");
+});
+
+test("--version prints the package.json version (the one npm publishes)", () => {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const r = spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", "--version"], { encoding: "utf8" });
+  assert.equal(r.stdout.trim(), pkg.version);
 });

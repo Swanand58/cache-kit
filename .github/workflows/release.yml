@@ -1,0 +1,26 @@
+name: Release
+# Cut a release on GitHub (Releases -> Draft a new release -> tag vX.Y.Z -> Publish) and this publishes it to npm.
+on:
+  release:
+    types: [published]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC): no token or OTP stored anywhere
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest # trusted publishing needs npm >= 11.5.1
+      - name: Tag must match package.json
+        run: |
+          want="v$(node -p "require('./package.json').version")"
+          [ "$GITHUB_REF_NAME" = "$want" ] || { echo "release tag $GITHUB_REF_NAME != package.json $want: bump the version first"; exit 1; }
+      - run: npm ci
+      - run: npm test
+      - run: git diff --exit-code dist
+      - run: npm publish
