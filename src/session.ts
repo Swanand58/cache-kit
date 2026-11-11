@@ -2,6 +2,7 @@ import { hash, systemText, blocksOf } from "./normalize.js";
 import { addEntry, cost, emptyTotals, hitRate, type Totals } from "./metrics.js";
 import { diff, snapshot, type Snapshot } from "./prefix.js";
 import type { Config } from "./config.js";
+import { TTL_SECONDS } from "./types.js";
 import type { Cause, CauseKind, Entry, Req, Usage } from "./types.js";
 
 interface Lineage { id: string; lines: Set<string>; tools: Set<string>; first: string; prev?: Snapshot; prevAt: number; prevCached: number; calls: number }
@@ -121,7 +122,7 @@ export class Tracker {
       else {
         causes.push(...diff(prev, snap));
         gap_s = Math.round((ctx.start - l.prevAt) / 1000);
-        const ttl_s = prev.ttl === "1h" ? 3600 : 300;
+        const ttl_s = TTL_SECONDS[prev.ttl];
         if (gap_s > ttl_s) causes.push({ kind: "ttl_expiry", detail: `ttl expiry: ${gap_s}s since the last call, ${prev.ttl} TTL` });
       }
       if (ctx.parallel) causes.push({ kind: "parallel", detail: "parallel: same prefix in flight before the first response began; warm the cache with one call before fanning out" });

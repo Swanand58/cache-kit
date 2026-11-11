@@ -1,6 +1,7 @@
 import { hash, systemText, blocksOf } from "./normalize.js";
 import { addEntry, cost, emptyTotals, hitRate } from "./metrics.js";
 import { diff, snapshot } from "./prefix.js";
+import { TTL_SECONDS } from "./types.js";
 const ZERO = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
 // compaction outranks system/tools: /compact swaps the system prompt and rewrites history in one go, and the history is the cause
 const ORDER = ["model", "thinking", "compaction", "tools", "tool_order", "system", "ttl_expiry", "parallel", "no_breakpoint", "below_min", "first_call", "unknown"];
@@ -101,7 +102,7 @@ export class Tracker {
             else {
                 causes.push(...diff(prev, snap));
                 gap_s = Math.round((ctx.start - l.prevAt) / 1000);
-                const ttl_s = prev.ttl === "1h" ? 3600 : 300;
+                const ttl_s = TTL_SECONDS[prev.ttl];
                 if (gap_s > ttl_s)
                     causes.push({ kind: "ttl_expiry", detail: `ttl expiry: ${gap_s}s since the last call, ${prev.ttl} TTL` });
             }

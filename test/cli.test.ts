@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
+import { TTL_SECONDS } from "../src/types.js";
 import type { Entry } from "../src/types.js";
 import { readSession } from "../src/metrics.js";
 import { statusLine, statusReport } from "../src/report.js";
@@ -168,4 +169,20 @@ test("--version prints the VERSION file, and package.json (what npm publishes) a
   assert.equal(readFileSync("VERSION", "utf8").trim(), pkg.version);
   const r = spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", "--version"], { encoding: "utf8" });
   assert.equal(r.stdout.trim(), pkg.version);
+});
+
+// session-guard reads exactly these fields from `status --json`; renaming one breaks it.
+test("status --json keeps the fields other tools depend on (rows without provider/tag are fine)", () => {
+  const r = statusReport(rows, "A") as any;
+  assert.equal(r.session, "A");
+  assert.equal(r.calls, 3);
+  assert.equal(typeof r.recent_main_hit_rate, "number");
+  assert.equal(r.last_real_miss.kind, "ttl_expiry");
+  assert.equal(rows.some((e) => "provider" in e || "tag" in e), false, "fixture rows predate provider/tag");
+});
+
+test("TTL_SECONDS: Anthropic values unchanged, every Ttl has one", () => {
+  assert.equal(TTL_SECONDS["5m"], 300);
+  assert.equal(TTL_SECONDS["1h"], 3600);
+  for (const t of ["30m", "12h", "in_memory", "24h"] as const) assert.ok(TTL_SECONDS[t] > 0);
 });

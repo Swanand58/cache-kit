@@ -1,4 +1,8 @@
-export type Ttl = "5m" | "1h";
+export type Provider = "anthropic" | "openai";
+/** Anthropic: 5m / 1h. OpenAI: 30m / 12h (GPT-5.6+), in_memory / 24h (older models). */
+export type Ttl = "5m" | "1h" | "30m" | "12h" | "in_memory" | "24h";
+/** How long a cache entry is expected to live after its last use. in_memory and 24h are OpenAI's "typical" times; they can last longer. */
+export declare const TTL_SECONDS: Record<Ttl, number>;
 export interface CacheControl {
     type: "ephemeral";
     ttl?: Ttl;
@@ -42,7 +46,7 @@ export interface Usage {
         ephemeral_1h_input_tokens?: number;
     };
 }
-export type CauseKind = "first_call" | "model" | "thinking" | "tools" | "tool_order" | "compaction" | "system" | "ttl_expiry" | "parallel" | "below_min" | "no_breakpoint" | "unknown";
+export type CauseKind = "first_call" | "model" | "thinking" | "tools" | "tool_order" | "compaction" | "system" | "ttl_expiry" | "parallel" | "below_min" | "no_breakpoint" | "unknown" | "settings" | "routing" | "server_state" | "no_usage";
 export interface Cause {
     kind: CauseKind;
     detail: string;
@@ -50,6 +54,10 @@ export interface Cause {
 export interface Entry {
     ts: number;
     kind: "call" | "keepalive";
+    /** Missing on rows written before OpenAI support: means "anthropic". */
+    provider?: Provider;
+    /** App tag from the x-cachekit-app header; missing means untagged. */
+    tag?: string;
     session: string;
     lineage: string;
     model: string;

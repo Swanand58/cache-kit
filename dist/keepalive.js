@@ -1,5 +1,6 @@
 import { modelCfg, writePrice } from "./config.js";
 import { cost, hitRate, usdPair } from "./metrics.js";
+import { TTL_SECONDS } from "./types.js";
 /**
  * Optional TTL keep-alive: replays the last request with max_tokens 0 (prefill only, no output billed) shortly before
  * the cache entry would expire. Stops once refreshes have cost more than one re-write would, so it can't spend
@@ -32,7 +33,7 @@ export class KeepAlive {
         const mc = modelCfg(this.cfg, req.model);
         const refresh = (prefix * mc.cache_read) / 1e6;
         const rewrite = (prefix * writePrice(mc, ctx.snap.ttl)) / 1e6;
-        const ttlMs = (ctx.snap.ttl === "1h" ? 3600 : 300) * 1000;
+        const ttlMs = TTL_SECONDS[ctx.snap.ttl] * 1000;
         const maxN = Math.min(this.cfg.keepalive.max_refreshes, Math.floor(rewrite / refresh) || 0);
         if (!st.announced) {
             st.announced = true;

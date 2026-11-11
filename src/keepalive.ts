@@ -1,6 +1,7 @@
 import { modelCfg, writePrice, type Config } from "./config.js";
 import { cost, hitRate, usd, usdPair } from "./metrics.js";
 import type { Ctx } from "./session.js";
+import { TTL_SECONDS } from "./types.js";
 import type { Entry, Req, Ttl, Usage } from "./types.js";
 
 export type Send = (req: Req, headers: Record<string, string>, path: string) => Promise<{ status: number; usage?: Usage }>;
@@ -34,7 +35,7 @@ export class KeepAlive {
     const mc = modelCfg(this.cfg, req.model);
     const refresh = (prefix * mc.cache_read) / 1e6;
     const rewrite = (prefix * writePrice(mc, ctx.snap.ttl)) / 1e6;
-    const ttlMs = (ctx.snap.ttl === "1h" ? 3600 : 300) * 1000;
+    const ttlMs = TTL_SECONDS[ctx.snap.ttl] * 1000;
     const maxN = Math.min(this.cfg.keepalive.max_refreshes, Math.floor(rewrite / refresh) || 0);
     if (!st.announced) {
       st.announced = true;
