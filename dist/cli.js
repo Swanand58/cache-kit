@@ -7,7 +7,7 @@ import { buildReport, formatLog, formatReport, statusLine, statusReport } from "
 import { VERSION } from "./version.js";
 const USAGE = `cachekit <command>
 
-  proxy [--port 8787] [--upstream url] [--optimize] [--keepalive] [--config cachekit.toml] [--log file] [--quiet]
+  proxy [--port 8787] [--upstream url] [--openai-upstream url] [--optimize] [--keepalive] [--config cachekit.toml] [--log file] [--quiet]
         local proxy for Anthropic API traffic; observe-only unless --optimize.
         Point a harness at it:  ANTHROPIC_BASE_URL=http://localhost:8787
   log [log.jsonl] [-n 20] [-v] [--all] [--session id]   readable call-by-call log (-v adds rewrites/warnings; --all = every call)
@@ -19,7 +19,7 @@ const USAGE = `cachekit <command>
 const { values: v, positionals: pos } = parseArgs({
     allowPositionals: true,
     options: {
-        port: { type: "string" }, upstream: { type: "string" }, optimize: { type: "boolean" }, keepalive: { type: "boolean" }, config: { type: "string" },
+        port: { type: "string" }, upstream: { type: "string" }, "openai-upstream": { type: "string" }, optimize: { type: "boolean" }, keepalive: { type: "boolean" }, config: { type: "string" },
         log: { type: "string" }, json: { type: "boolean" }, session: { type: "string" }, quiet: { type: "boolean" }, lines: { type: "string", short: "n" }, verbose: { type: "boolean", short: "v" }, all: { type: "boolean" }, help: { type: "boolean", short: "h" }, version: { type: "boolean" },
     },
 });
@@ -49,6 +49,7 @@ async function main() {
         ...(v.log ? { log: { path: v.log } } : {}),
         ...(v.quiet ? { log: { quiet: true, ...(v.log ? { path: v.log } : {}) } } : {}),
         proxy: { ...(v.port ? { port: Number(v.port) } : {}), ...(v.upstream ? { upstream: v.upstream } : {}), ...(v.optimize ? { optimize: true } : {}) },
+        ...(v["openai-upstream"] ? { providers: { openai: { upstream: v["openai-upstream"] } } } : {}),
         ...(v.keepalive ? { keepalive: { enabled: true } } : {}),
     };
     const cfg = loadConfig(v.config, overrides);
@@ -57,7 +58,7 @@ async function main() {
         const p = createProxy({ cfg });
         p.server.listen(cfg.proxy.port, "127.0.0.1", () => {
             console.error(`cachekit proxy on http://localhost:${cfg.proxy.port} -> ${cfg.proxy.upstream} (${cfg.proxy.optimize ? "OPTIMIZE: rewriting requests" : "observe-only: requests forwarded untouched"})`);
-            console.error(`log: ${cfg.log.path}\nuse:  ANTHROPIC_BASE_URL=http://localhost:${cfg.proxy.port}`);
+            console.error(`log: ${cfg.log.path}\nuse:  ANTHROPIC_BASE_URL=http://localhost:${cfg.proxy.port}\n      OPENAI_BASE_URL=http://localhost:${cfg.proxy.port}/v1   (OpenAI calls go to ${cfg.providers.openai.upstream}; observe-only)`);
         });
         process.on("SIGINT", () => void p.close().then(() => process.exit(0)));
     }

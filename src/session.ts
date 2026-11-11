@@ -3,7 +3,8 @@ import { addEntry, cost, emptyTotals, hitRate, type Totals } from "./metrics.js"
 import { diff, snapshot, type Snapshot } from "./prefix.js";
 import type { Config } from "./config.js";
 import { TTL_SECONDS } from "./types.js";
-import type { Cause, CauseKind, Entry, Req, Usage } from "./types.js";
+import { modelCfg } from "./config.js";
+import type { Cause, CauseKind, Entry, Provider, Req, Usage } from "./types.js";
 
 interface Lineage { id: string; lines: Set<string>; tools: Set<string>; first: string; prev?: Snapshot; prevAt: number; prevCached: number; calls: number }
 interface Session { id: string; lineages: Lineage[]; totals: Totals }
@@ -18,6 +19,8 @@ export interface Ctx {
   streaming: boolean;
   done: boolean;
   req: Req;
+  /** set for OpenAI calls; Anthropic is the default */
+  provider?: Provider;
 }
 
 export interface EndInfo {
@@ -64,7 +67,7 @@ export class Tracker {
 
   constructor(private cfg: Config, private now: () => number = Date.now) {}
 
-  begin(req: Req, sessionHeader?: string): Ctx {
+  begin(req: Req, sessionHeader?: string, provider?: Provider): Ctx {
     const snap = snapshot(req);
     const sid = deriveSession(req, sessionHeader, snap.marker);
     let s = this.sessions.get(sid);
@@ -85,7 +88,7 @@ export class Tracker {
     const key = `${sid}|${best.id}|${snap.head}`;
     const w = this.waiting.get(key) ?? 0;
     this.waiting.set(key, w + 1);
-    return { sid, lineage: best, snap, start: this.now(), parallel: w > 0, streaming: false, done: false, req };
+    return { sid, lineage: best, snap, start: this.now(), parallel: w > 0, streaming: false, done: false, req, provider };
   }
 
   /** Call when the response begins (first byte). Entries become readable from here. */
@@ -126,7 +129,12 @@ export class Tracker {
         if (gap_s > ttl_s) causes.push({ kind: "ttl_expiry", detail: `ttl expiry: ${gap_s}s since the last call, ${prev.ttl} TTL` });
       }
       if (ctx.parallel) causes.push({ kind: "parallel", detail: "parallel: same prefix in flight before the first response began; warm the cache with one call before fanning out" });
-      if (!snap.hasMarker) causes.push({ kind: "no_breakpoint", detail: "request has no cache_control breakpoint" });
+      const total = usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens;
+      if (ctx.provider === "openai") {
+        // OpenAI caches automatically (no breakpoints) and older models never report writes: judge by prompt size
+        const min = modelCfg(this.cfg, ctx.req.model).min_tokens;
+        if (total < min) causes.push({ kind: "below_min", detail: `prompt is ${total} tokens, under the ${min}-token minimum for caching` });
+      } else if (!snap.hasMarker) causes.push({ kind: "no_breakpoint", detail: "request has no cache_control breakpoint" });
       else if (usage.cache_creation_input_tokens === 0 && usage.cache_read_input_tokens === 0)
         causes.push({ kind: "below_min", detail: "breakpoint set but nothing was written: prefix likely under the model's minimum cacheable size" });
       if (!causes.length) causes.push({ kind: "unknown", detail: "prefix identical and within TTL; check workspace/org change, 20-block lookback, or server-side invalidation" });
@@ -142,6 +150,7 @@ export class Tracker {
       cost: ok ? cost(this.cfg, ctx.req.model, usage, snap.ttl) : { actual: 0, uncached: 0 },
       prefix_hash: snap.prefix, ttl: snap.ttl, rewrites: info.rewrites ?? [], warnings: info.warnings ?? [],
     };
+    if (ctx.provider) e.provider = ctx.provider;
     if (gap_s !== undefined) e.gap_s = gap_s;
     if (info.error) e.error = info.error;
     addEntry(this.sessions.get(ctx.sid)!.totals, e);

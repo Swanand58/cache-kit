@@ -6,6 +6,8 @@ export interface ProxyOpts {
     /** Rewrite requests (sort tools, add breakpoints). Default false: observe only, bytes forwarded untouched. */
     optimize?: boolean;
     upstream?: string;
+    /** OpenAI upstream (default from config); `upstream` above is the Anthropic one. */
+    openaiUpstream?: string;
     say?: (s: string) => void;
 }
 export declare function createProxy(opts: ProxyOpts): {

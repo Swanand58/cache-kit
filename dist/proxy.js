@@ -5,6 +5,7 @@ import { placeBreakpoints } from "./breakpoints.js";
 import { KeepAlive } from "./keepalive.js";
 import { Logger, parseUsage, summaryLine } from "./metrics.js";
 import { findVolatile, normalize } from "./normalize.js";
+import { isOpenAICall, openaiStreamUsage, openaiToReq, parseOpenAIUsage, providerOf } from "./providers.js";
 import { Tracker } from "./session.js";
 const HOP = new Set(["connection", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade", "te", "trailer", "host"]);
 const KA_HEADERS = ["x-api-key", "authorization", "anthropic-version", "anthropic-beta"];
@@ -21,6 +22,7 @@ function decoder(enc) {
 }
 /** Reads usage out of a (possibly compressed) response without touching the bytes the client receives. */
 class Tap {
+    provider;
     onDone;
     usage;
     text = "";
@@ -28,7 +30,8 @@ class Tap {
     dec;
     sse;
     finished = false;
-    constructor(headers, onDone) {
+    constructor(headers, provider, onDone) {
+        this.provider = provider;
         this.onDone = onDone;
         this.sse = String(headers["content-type"] ?? "").includes("text/event-stream");
         const enc = String(headers["content-encoding"] ?? "").toLowerCase();
@@ -55,7 +58,7 @@ class Tap {
             try {
                 const j = JSON.parse(this.text);
                 if (j?.usage)
-                    this.usage = parseUsage(j.usage);
+                    this.usage = this.provider === "openai" ? parseOpenAIUsage(j.usage) : parseUsage(j.usage);
             }
             catch { /* not JSON (error page) */ }
         }
@@ -81,6 +84,10 @@ class Tap {
         }
     }
     event(ev) {
+        if (this.provider === "openai") {
+            this.usage = openaiStreamUsage(ev) ?? this.usage;
+            return;
+        }
         if (ev.type === "message_start" && ev.message?.usage)
             this.usage = parseUsage(ev.message.usage);
         else if (ev.type === "message_delta" && ev.usage && this.usage) {
@@ -95,8 +102,13 @@ class Tap {
 }
 export function createProxy(opts) {
     const { cfg } = opts;
-    const upstream = new URL(opts.upstream ?? cfg.proxy.upstream);
-    const lib = upstream.protocol === "https:" ? https : http;
+    const targets = {
+        anthropic: new URL(opts.upstream ?? cfg.proxy.upstream),
+        openai: new URL(opts.openaiUpstream ?? cfg.providers.openai.upstream),
+    };
+    const upstream = targets.anthropic; // keep-alive replays only go to Anthropic
+    const libOf = (u) => (u.protocol === "https:" ? https : http);
+    const lib = libOf(upstream);
     const optimize = opts.optimize ?? cfg.proxy.optimize;
     const say = opts.say ?? ((s) => { if (!cfg.log.quiet)
         console.error(s); });
@@ -141,8 +153,24 @@ export function createProxy(opts) {
         let warnings = [];
         let forwarded;
         const pathname = (req.url ?? "").split("?")[0];
+        const provider = providerOf(pathname);
+        const target = targets[provider];
         // Analysis must never block or break the request: any error here means "forward untouched".
-        if (req.method === "POST" && pathname === "/v1/messages") {
+        if (provider === "openai" && isOpenAICall(req.method, pathname)) {
+            try {
+                const r = openaiToReq(pathname, JSON.parse(body.toString("utf8")));
+                if (r) {
+                    warnings = findVolatile(r);
+                    ctx = tracker.begin(r, undefined, "openai");
+                    forwarded = r;
+                }
+            }
+            catch (err) {
+                say(`[cachekit] analysis error, forwarding untouched: ${err}`);
+                ctx = undefined;
+            }
+        }
+        else if (req.method === "POST" && pathname === "/v1/messages") {
             try {
                 const parsed = JSON.parse(body.toString("utf8"));
                 if (parsed && Array.isArray(parsed.messages) && typeof parsed.model === "string") {
@@ -176,10 +204,10 @@ export function createProxy(opts) {
         for (const [k, v] of Object.entries(req.headers))
             if (!HOP.has(k) && v !== undefined)
                 headers[k] = v;
-        headers.host = upstream.host;
+        headers.host = target.host;
         if (fwd !== body || headers["content-length"] !== undefined)
             headers["content-length"] = fwd.length;
-        const up = lib.request({ protocol: upstream.protocol, hostname: upstream.hostname, port: upstream.port || undefined, method: req.method, path: req.url, headers }, (upRes) => {
+        const up = libOf(target).request({ protocol: target.protocol, hostname: target.hostname, port: target.port || undefined, method: req.method, path: req.url, headers }, (upRes) => {
             const resHeaders = {};
             for (const [k, v] of Object.entries(upRes.headers))
                 if (!HOP.has(k) && v !== undefined)
@@ -190,10 +218,12 @@ export function createProxy(opts) {
             let tap;
             if (ctx) {
                 const c = ctx;
-                tap = new Tap(upRes.headers, (usage, err) => {
+                tap = new Tap(upRes.headers, provider, (usage, err) => {
                     try {
                         const status = upRes.statusCode ?? 0;
                         const e = tracker.end(c, { usage, status, stream: String(upRes.headers["content-type"]).includes("event-stream"), rewrites, warnings, error: err });
+                        if (provider === "openai" && status < 400 && !usage)
+                            e.causes.push({ kind: "no_usage", detail: "response carried no usage, so this call is not counted in hit rate (a stream needs stream_options.include_usage)" });
                         record(e);
                         if (status < 400 && usage) {
                             say(summaryLine(e, tracker.totals(c.sid), tracker.label(c)));
@@ -206,7 +236,8 @@ export function createProxy(opts) {
                             for (const k of KA_HEADERS)
                                 if (typeof req.headers[k] === "string")
                                     h[k] = req.headers[k];
-                            keepalive.touch(c, forwarded, h, usage, req.url);
+                            if (provider === "anthropic")
+                                keepalive.touch(c, forwarded, h, usage, req.url);
                         }
                     }
                     catch (e2) {
@@ -242,7 +273,8 @@ export function createProxy(opts) {
             say(`[cachekit] upstream error: ${err.message}`);
             if (!res.headersSent) {
                 res.writeHead(502, { "content-type": "application/json" });
-                res.end(JSON.stringify({ type: "error", error: { type: "api_error", message: `cachekit proxy: upstream error: ${err.message}` } }));
+                const message = `cachekit proxy: upstream error: ${err.message}`;
+                res.end(JSON.stringify(provider === "openai" ? { error: { message, type: "api_error", code: null } } : { type: "error", error: { type: "api_error", message } }));
             }
             else
                 res.destroy();

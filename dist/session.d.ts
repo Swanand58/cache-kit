@@ -1,7 +1,7 @@
 import { type Totals } from "./metrics.js";
 import { type Snapshot } from "./prefix.js";
 import type { Config } from "./config.js";
-import type { Entry, Req, Usage } from "./types.js";
+import type { Entry, Provider, Req, Usage } from "./types.js";
 interface Lineage {
     id: string;
     lines: Set<string>;
@@ -22,6 +22,8 @@ export interface Ctx {
     streaming: boolean;
     done: boolean;
     req: Req;
+    /** set for OpenAI calls; Anthropic is the default */
+    provider?: Provider;
 }
 export interface EndInfo {
     usage?: Usage;
@@ -48,7 +50,7 @@ export declare class Tracker {
     private sessions;
     private waiting;
     constructor(cfg: Config, now?: () => number);
-    begin(req: Req, sessionHeader?: string): Ctx;
+    begin(req: Req, sessionHeader?: string, provider?: Provider): Ctx;
     /** Call when the response begins (first byte). Entries become readable from here. */
     firstByte(ctx: Ctx): void;
     /** Request failed or was cut off before a usable response. */
