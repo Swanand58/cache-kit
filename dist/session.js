@@ -5,7 +5,9 @@ import { TTL_SECONDS } from "./types.js";
 import { modelCfg } from "./config.js";
 const ZERO = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
 // compaction outranks system/tools: /compact swaps the system prompt and rewrites history in one go, and the history is the cause
-const ORDER = ["model", "thinking", "compaction", "tools", "tool_order", "system", "ttl_expiry", "parallel", "no_breakpoint", "below_min", "first_call", "unknown"];
+const ORDER = ["model", "thinking", "settings", "compaction", "tools", "tool_order", "system", "routing", "ttl_expiry", "parallel", "no_breakpoint", "below_min", "server_state", "first_call", "unknown"];
+/** OpenAI: more requests than this per minute on one prefix can spill to machines with a cold cache. */
+const ROUTING_PER_MIN = 15;
 const jaccard = (a, b) => {
     if (!a.size && !b.size)
         return 1;
@@ -37,6 +39,8 @@ export class Tracker {
     now;
     sessions = new Map();
     waiting = new Map();
+    // ponytail: one small array per distinct OpenAI prefix, pruned on access; add a sweep if a proxy sees millions of prefixes
+    recent = new Map();
     constructor(cfg, now = Date.now) {
         this.cfg = cfg;
         this.now = now;
@@ -65,7 +69,15 @@ export class Tracker {
         const key = `${sid}|${best.id}|${snap.head}`;
         const w = this.waiting.get(key) ?? 0;
         this.waiting.set(key, w + 1);
-        return { sid, lineage: best, snap, start: this.now(), parallel: w > 0, streaming: false, done: false, req, provider };
+        const start = this.now();
+        let rate;
+        if (provider === "openai") {
+            const ts = (this.recent.get(snap.head) ?? []).filter((t) => start - t < 60_000);
+            ts.push(start);
+            this.recent.set(snap.head, ts);
+            rate = ts.length;
+        }
+        return { sid, lineage: best, snap, start, parallel: w > 0, streaming: false, done: false, req, provider, rate };
     }
     /** Call when the response begins (first byte). Entries become readable from here. */
     firstByte(ctx) {
@@ -98,22 +110,30 @@ export class Tracker {
         let causes = [];
         let gap_s;
         if (miss) {
-            if (!prev)
+            if (ctx.req.serverState)
+                causes.push({ kind: "server_state", detail: "history is kept by OpenAI (previous_response_id / conversation), so the prefix is not visible to cachekit and cannot be diffed" });
+            else if (!prev)
                 causes.push({ kind: "first_call", detail: "first call in this lineage (cold cache)" });
             else {
                 causes.push(...diff(prev, snap));
                 gap_s = Math.round((ctx.start - l.prevAt) / 1000);
                 const ttl_s = TTL_SECONDS[prev.ttl];
                 if (gap_s > ttl_s)
-                    causes.push({ kind: "ttl_expiry", detail: `ttl expiry: ${gap_s}s since the last call, ${prev.ttl} TTL` });
+                    causes.push({ kind: "ttl_expiry", detail: ctx.provider === "openai"
+                            ? `likely evicted: ${gap_s}s since the last call, longer than the typical ${prev.ttl} cache lifetime (OpenAI gives no guarantee either way)`
+                            : `ttl expiry: ${gap_s}s since the last call, ${prev.ttl} TTL` });
             }
+            if (ctx.provider === "openai" && (ctx.rate ?? 0) > ROUTING_PER_MIN)
+                causes.push({ kind: "routing", detail: `${ctx.rate} requests in the last minute share this prefix; above ~${ROUTING_PER_MIN}/min OpenAI may spill to machines with a cold cache` });
             if (ctx.parallel)
                 causes.push({ kind: "parallel", detail: "parallel: same prefix in flight before the first response began; warm the cache with one call before fanning out" });
             const total = usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens;
             if (ctx.provider === "openai") {
                 // OpenAI caches automatically (no breakpoints) and older models never report writes: judge by prompt size
                 const min = modelCfg(this.cfg, ctx.req.model).min_tokens;
-                if (total < min)
+                if (!snap.hasMarker)
+                    causes.push({ kind: "no_breakpoint", detail: 'prompt_cache_options.mode is "explicit" but no prompt_cache_breakpoint is set: OpenAI does not cache this request' });
+                else if (total < min)
                     causes.push({ kind: "below_min", detail: `prompt is ${total} tokens, under the ${min}-token minimum for caching` });
             }
             else if (!snap.hasMarker)
@@ -121,11 +141,14 @@ export class Tracker {
             else if (usage.cache_creation_input_tokens === 0 && usage.cache_read_input_tokens === 0)
                 causes.push({ kind: "below_min", detail: "breakpoint set but nothing was written: prefix likely under the model's minimum cacheable size" });
             if (!causes.length)
-                causes.push({ kind: "unknown", detail: "prefix identical and within TTL; check workspace/org change, 20-block lookback, or server-side invalidation" });
+                causes.push({ kind: "unknown", detail: ctx.provider === "openai"
+                        ? "prefix identical and within the typical lifetime; OpenAI does not guarantee hits, so machine eviction or routing is the likely reason"
+                        : "prefix identical and within TTL; check workspace/org change, 20-block lookback, or server-side invalidation" });
             causes.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
         }
         if (ok) {
-            l.prev = snap;
+            if (!ctx.req.serverState)
+                l.prev = snap; // a stateful call only carries new input: diffing against it would fake a "compaction"
             l.prevAt = ctx.start;
             l.prevCached = usage.cache_read_input_tokens + usage.cache_creation_input_tokens;
             l.calls++;

@@ -21,10 +21,13 @@ export function snapshot(req) {
     if (!marker && (sysCC || toolCC))
         ttl = (sysCC ?? toolCC).ttl ?? "5m";
     const thinking = canon([req.thinking ?? null, req.output_config?.effort ?? null]);
-    const head = hash(canon([req.model, thinking, tools, req.system], true));
+    const settings = Object.fromEntries(Object.entries((req.settings ?? {})).map(([k, v]) => [k, canon(v)]));
+    const cacheKey = typeof req.cacheKey === "string" ? req.cacheKey : "";
+    // settings only enter the head when present, so Anthropic hashes are unchanged
+    const head = hash(canon([req.model, thinking, tools, req.system, ...(req.settings === undefined ? [] : [req.settings, cacheKey])], true));
     const included = marker ? limit(msgs, marker) : [];
     return {
-        model: req.model, thinking, toolNames: tools.map((t) => t.name), toolHashes,
+        model: req.model, thinking, settings, cacheKey, toolNames: tools.map((t) => t.name), toolHashes,
         systemLines: systemText(req.system).split("\n"), msgs, marker, hasMarker, ttl, head,
         prefix: hash(JSON.stringify([head, included])),
     };
@@ -38,6 +41,11 @@ export function diff(prev, cur) {
         out.push({ kind: "model", detail: "model changed" });
     if (prev.thinking !== cur.thinking)
         out.push({ kind: "thinking", detail: "thinking/effort settings changed" });
+    const changedSettings = [...new Set([...Object.keys(prev.settings), ...Object.keys(cur.settings)])].filter((k) => prev.settings[k] !== cur.settings[k]);
+    if (changedSettings.length)
+        out.push({ kind: "settings", detail: `request settings changed: ${changedSettings.join(", ")}` });
+    if (prev.cacheKey !== cur.cacheKey)
+        out.push({ kind: "routing", detail: "prompt_cache_key changed, so the request may be routed to a machine with a different cache" });
     const added = cur.toolNames.filter((n) => !(n in prev.toolHashes));
     const removed = prev.toolNames.filter((n) => !(n in cur.toolHashes));
     for (const n of added)
