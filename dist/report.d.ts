@@ -19,6 +19,24 @@ export declare function buildReport(entries: Entry[]): {
     saved: number;
     saved_pct: number;
     misses: number;
+    by_provider: {
+        [k: string]: {
+            calls: number;
+            hit_rate: number;
+            cost: number;
+            saved: number;
+            misses: number;
+        };
+    };
+    by_tag: {
+        [k: string]: {
+            calls: number;
+            hit_rate: number;
+            cost: number;
+            saved: number;
+            misses: number;
+        };
+    };
     top_causes: {
         kind: string;
         count: number;
@@ -91,6 +109,24 @@ export declare function statusReport(entries: Entry[], sid?: string): {
     saved: number;
     saved_pct: number;
     misses: number;
+    by_provider: {
+        [k: string]: {
+            calls: number;
+            hit_rate: number;
+            cost: number;
+            saved: number;
+            misses: number;
+        };
+    };
+    by_tag: {
+        [k: string]: {
+            calls: number;
+            hit_rate: number;
+            cost: number;
+            saved: number;
+            misses: number;
+        };
+    };
     top_causes: {
         kind: string;
         count: number;

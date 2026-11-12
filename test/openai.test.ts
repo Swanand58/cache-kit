@@ -321,3 +321,12 @@ test("diagnosis: wording for OpenAI is hedged: likely evicted after the typical 
   assert.deepEqual(kinds(e2), ["unknown"]);
   assert.match(e2.causes[0].detail, /does not guarantee hits/);
 });
+
+test("app tag on OpenAI calls: logged, stripped before forwarding, and split in the report", async () => {
+  const t = await setup(json({ usage: CHAT_USAGE }));
+  await call(t.port, "/v1/chat/completions", JSON.stringify(chatBody()), { "x-cachekit-app": "search.v2", authorization: "Bearer k" });
+  const e = (await waitFor(() => t.entries().length && t.entries()))[0];
+  assert.equal(e.tag, "search.v2");
+  assert.equal(t.seen[0].headers["x-cachekit-app"], undefined);
+  assert.equal(t.seen[0].headers.authorization, "Bearer k");
+});

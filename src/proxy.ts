@@ -22,6 +22,8 @@ export interface ProxyOpts {
 }
 
 const HOP = new Set(["connection", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade", "te", "trailer", "host"]);
+/** App tags become a log field, so they are restricted: lower-case, digits, `.`, `_`, `-`. Anything else is logged as "invalid", never verbatim. */
+const TAG_RE = /^[a-z0-9._-]{1,64}$/;
 const KA_HEADERS = ["x-api-key", "authorization", "anthropic-version", "anthropic-beta"];
 
 function decoder(enc?: string): Duplex | null {
@@ -170,8 +172,14 @@ export function createProxy(opts: ProxyOpts) {
       }
     }
 
+    // The tag is for cachekit only: read it, then keep it from reaching OpenAI/Anthropic (it may name a tenant).
+    const tagHeader = cfg.proxy.tag_header.toLowerCase();
+    const rawTag = req.headers[tagHeader];
+    const tagValue = Array.isArray(rawTag) ? rawTag[0] : rawTag;
+    if (ctx && tagValue !== undefined) ctx.tag = TAG_RE.test(tagValue) ? tagValue : "invalid";
+
     const headers: http.OutgoingHttpHeaders = {};
-    for (const [k, v] of Object.entries(req.headers)) if (!HOP.has(k) && v !== undefined) headers[k] = v;
+    for (const [k, v] of Object.entries(req.headers)) if (!HOP.has(k) && k !== tagHeader && v !== undefined) headers[k] = v;
     headers.host = target.host;
     if (fwd !== body || headers["content-length"] !== undefined) headers["content-length"] = fwd.length;
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { loadConfig } from "./config.js";
+import type { Entry } from "./types.js";
 import { readLog, readSession } from "./metrics.js";
 import { createProxy } from "./proxy.js";
 import { buildReport, formatLog, formatReport, statusLine, statusReport } from "./report.js";
@@ -11,8 +12,8 @@ const USAGE = `cachekit <command>
   proxy [--port 8787] [--upstream url] [--openai-upstream url] [--optimize] [--keepalive] [--config cachekit.toml] [--log file] [--quiet]
         local proxy for Anthropic API traffic; observe-only unless --optimize.
         Point a harness at it:  ANTHROPIC_BASE_URL=http://localhost:8787
-  log [log.jsonl] [-n 20] [-v] [--all] [--session id]   readable call-by-call log (-v adds rewrites/warnings; --all = every call)
-  report <log.jsonl> [--json]      hit rate, cost saved, top causes of misses
+  log [log.jsonl] [-n 20] [-v] [--all] [--session id] [--app tag]   readable call-by-call log (-v adds rewrites/warnings; --all = every call)
+  report <log.jsonl> [--json] [--app tag]   hit rate, cost saved, top causes of misses
   status [--log file] [--session id] [--json] [--config file]   one line, for a status line or hook
         an unknown --session id (or stdin session_id) prints "no data" / {"calls": 0}; no id = latest session
   mcp [--log file] [--config file]  MCP server (stdio): cache_stats, explain_last_miss
@@ -22,10 +23,11 @@ const { values: v, positionals: pos } = parseArgs({
   allowPositionals: true,
   options: {
     port: { type: "string" }, upstream: { type: "string" }, "openai-upstream": { type: "string" }, optimize: { type: "boolean" }, keepalive: { type: "boolean" }, config: { type: "string" },
-    log: { type: "string" }, json: { type: "boolean" }, session: { type: "string" }, quiet: { type: "boolean" }, lines: { type: "string", short: "n" }, verbose: { type: "boolean", short: "v" }, all: { type: "boolean" }, help: { type: "boolean", short: "h" }, version: { type: "boolean" },
+    log: { type: "string" }, json: { type: "boolean" }, session: { type: "string" }, quiet: { type: "boolean" }, lines: { type: "string", short: "n" }, verbose: { type: "boolean", short: "v" }, all: { type: "boolean" }, app: { type: "string" }, help: { type: "boolean", short: "h" }, version: { type: "boolean" },
   },
 });
 const [cmd, arg] = pos;
+const byApp = (es: Entry[]) => (v.app ? es.filter((e) => (e.tag ?? "untagged") === v.app) : es);
 
 /** session_id from piped JSON on stdin, if any arrives within 150 ms (never hangs a status line). */
 async function stdinSession(): Promise<string | undefined> {
@@ -59,14 +61,14 @@ async function main() {
     });
     process.on("SIGINT", () => void p.close().then(() => process.exit(0)));
   } else if (cmd === "log") {
-    const all = readLog(arg ?? cfg.log.path);
+    const all = byApp(readLog(arg ?? cfg.log.path));
     if (!all.length) return void console.log(`no entries in ${arg ?? cfg.log.path}`);
     const scoped = v.session ? all.filter((e) => e.session === v.session) : all;
     const shown = v.all ? scoped : scoped.slice(-(Number(v.lines) || 20));
     console.log(formatLog(shown, { verbose: v.verbose, color: !!process.stdout.isTTY && !process.env.NO_COLOR, all }));
   } else if (cmd === "report") {
     if (!arg) return void console.log("usage: cachekit report <log.jsonl> [--json]");
-    const r = buildReport(readLog(arg));
+    const r = buildReport(byApp(readLog(arg)));
     print(formatReport(r), r);
   } else if (cmd === "status") {
     // as a Claude Code status line, stdin carries {"session_id": ...}. An id that is given but has no rows means

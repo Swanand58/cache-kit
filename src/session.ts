@@ -23,6 +23,8 @@ export interface Ctx {
   provider?: Provider;
   /** OpenAI: requests with this head in the last minute, this one included */
   rate?: number;
+  /** app tag from the proxy's tag header (already validated) */
+  tag?: string;
 }
 
 export interface EndInfo {
@@ -175,6 +177,7 @@ export class Tracker {
       prefix_hash: snap.prefix, ttl: snap.ttl, rewrites: info.rewrites ?? [], warnings: info.warnings ?? [],
     };
     if (ctx.provider) e.provider = ctx.provider;
+    if (ctx.tag) e.tag = ctx.tag;
     if (gap_s !== undefined) e.gap_s = gap_s;
     if (info.error) e.error = info.error;
     addEntry(this.sessions.get(ctx.sid)!.totals, e);

@@ -62,7 +62,7 @@ export const DEFAULTS = {
     ttl: "5m",
     tokens: { count: "estimate" },
     log: { path: "~/.cachekit/log.jsonl", quiet: false },
-    proxy: { port: 8787, upstream: "https://api.anthropic.com", optimize: false, session_header: "x-claude-code-session-id" },
+    proxy: { port: 8787, upstream: "https://api.anthropic.com", optimize: false, session_header: "x-claude-code-session-id", tag_header: "x-cachekit-app" },
     providers: { openai: { upstream: "https://api.openai.com" } },
     keepalive: { enabled: false, margin_seconds: 30, max_refreshes: 12 },
     compact: { keep_last: 4 },

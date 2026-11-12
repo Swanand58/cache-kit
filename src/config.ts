@@ -18,7 +18,7 @@ export interface Config {
   ttl: Ttl;
   tokens: { count: "estimate" | "api" };
   log: { path: string; quiet: boolean };
-  proxy: { port: number; upstream: string; optimize: boolean; session_header: string };
+  proxy: { port: number; upstream: string; optimize: boolean; session_header: string; tag_header: string };
   providers: { openai: { upstream: string } };
   keepalive: { enabled: boolean; margin_seconds: number; max_refreshes: number };
   compact: { keep_last: number };
@@ -89,7 +89,7 @@ export const DEFAULTS: Config = {
   ttl: "5m",
   tokens: { count: "estimate" },
   log: { path: "~/.cachekit/log.jsonl", quiet: false },
-  proxy: { port: 8787, upstream: "https://api.anthropic.com", optimize: false, session_header: "x-claude-code-session-id" },
+  proxy: { port: 8787, upstream: "https://api.anthropic.com", optimize: false, session_header: "x-claude-code-session-id", tag_header: "x-cachekit-app" },
   providers: { openai: { upstream: "https://api.openai.com" } },
   keepalive: { enabled: false, margin_seconds: 30, max_refreshes: 12 },
   compact: { keep_last: 4 },

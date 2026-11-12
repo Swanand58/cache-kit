@@ -22,6 +22,7 @@ export interface Config {
         upstream: string;
         optimize: boolean;
         session_header: string;
+        tag_header: string;
     };
     providers: {
         openai: {

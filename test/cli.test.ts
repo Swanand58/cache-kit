@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { TTL_SECONDS } from "../src/types.js";
 import type { Entry } from "../src/types.js";
 import { readSession } from "../src/metrics.js";
-import { statusLine, statusReport } from "../src/report.js";
+import { buildReport, formatReport, statusLine, statusReport } from "../src/report.js";
 import { tmpLog, usage } from "./helpers.js";
 
 const entry = (o: Partial<Entry>): Entry => ({
@@ -185,4 +185,37 @@ test("TTL_SECONDS: Anthropic values unchanged, every Ttl has one", () => {
   assert.equal(TTL_SECONDS["5m"], 300);
   assert.equal(TTL_SECONDS["1h"], 3600);
   for (const t of ["30m", "12h", "in_memory", "24h"] as const) assert.ok(TTL_SECONDS[t] > 0);
+});
+
+const tagged = [
+  entry({ ts: 1, tag: "chat", provider: "openai", cost: { actual: 1, uncached: 3 } }),
+  entry({ ts: 2, tag: "chat", provider: "openai", cost: { actual: 1, uncached: 3 } }),
+  miss({ ts: 3, tag: "search", cost: { actual: 2, uncached: 2 } }),
+  entry({ ts: 4 }),
+];
+
+test("report: by_tag splits calls (untagged get a row so rows add up), by_provider treats a missing provider as anthropic", () => {
+  const r = buildReport(tagged);
+  assert.deepEqual(Object.keys(r.by_tag).sort(), ["chat", "search", "untagged"]);
+  assert.equal(r.by_tag.chat.calls, 2);
+  assert.equal(r.by_tag.search.hit_rate, 0);
+  assert.equal(Object.values(r.by_tag).reduce((a, v) => a + v.calls, 0), r.calls);
+  assert.deepEqual(Object.keys(r.by_provider).sort(), ["anthropic", "openai"]);
+  assert.equal(r.by_provider.openai.calls, 2);
+  assert.deepEqual(buildReport(rows).by_tag, {}, "nothing tagged: no by_tag rows");
+  const text = formatReport(r);
+  assert.match(text, /by app:/);
+  assert.match(text, /by provider:/);
+  assert.ok(!formatReport(buildReport(rows)).includes("by app:"));
+});
+
+test("report and log accept --app, with `untagged` for calls without a tag", () => {
+  const log = tmpLog();
+  writeFileSync(log, tagged.map((e) => JSON.stringify(e)).join("\n") + "\n");
+  const rep = (...a: string[]) => JSON.parse(spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", "report", log, "--json", ...a], { encoding: "utf8" }).stdout);
+  assert.equal(rep().calls, 4);
+  assert.equal(rep("--app", "chat").calls, 2);
+  assert.equal(rep("--app", "untagged").calls, 1);
+  const lg = spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", "log", log, "--app", "search"], { encoding: "utf8" }).stdout;
+  assert.equal(lg.split("\n").filter((l) => /MISS|HIT/.test(l) && /claude-opus/.test(l)).length, 1);
 });
