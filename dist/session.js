@@ -161,6 +161,8 @@ export class Tracker {
         };
         if (ctx.provider)
             e.provider = ctx.provider;
+        if (ctx.tag)
+            e.tag = ctx.tag;
         if (gap_s !== undefined)
             e.gap_s = gap_s;
         if (info.error)

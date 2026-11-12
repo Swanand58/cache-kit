@@ -255,3 +255,17 @@ test("keep-alive is off by default", async () => {
   await sleep(1400);
   assert.equal(t.seen.length, 1);
 });
+
+test("app tag: read for the log, then stripped before forwarding; bad values are logged as `invalid`", async () => {
+  const t = await setup(jsonReply(U));
+  const raw = JSON.stringify(baseReq());
+  await post(t.port, raw, { "x-cachekit-app": "checkout-bot", "x-api-key": "k" });
+  await post(t.port, raw, { "x-cachekit-app": "Acme Corp <ceo@acme.example>" });
+  await post(t.port, raw);
+  const es = await waitFor(() => t.entries().length === 3 && t.entries());
+  assert.deepEqual(es.map((e) => e.tag), ["checkout-bot", "invalid", undefined]);
+  assert.ok(t.seen.every((s) => !("x-cachekit-app" in s.headers)), "the tag never reaches the upstream");
+  assert.equal(t.seen[0].headers["x-api-key"], "k", "other headers untouched");
+  assert.ok(t.seen[0].body.equals(Buffer.from(raw)), "body untouched");
+  assert.ok(!readFileSync(t.cfg.log.path, "utf8").includes("acme"), "an invalid tag is never logged verbatim");
+});

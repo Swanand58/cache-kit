@@ -18,6 +18,13 @@ export function labels(entries) {
         main.set(s, [...m.entries()].sort((a, b) => b[1] - a[1])[0][0]);
     return (e) => (main.get(e.session) === e.lineage ? "main" : "sub");
 }
+const brief = (t) => ({ calls: t.calls, hit_rate: t.hit_rate, cost: t.cost, saved: t.saved, misses: t.misses });
+function groupBy(entries, key) {
+    const m = new Map();
+    for (const e of entries)
+        (m.get(key(e)) ?? m.set(key(e), []).get(key(e))).push(e);
+    return Object.fromEntries([...m].map(([k, es]) => [k, brief(aggregate(es))]));
+}
 export function buildReport(entries) {
     const t = aggregate(entries);
     const label = labels(entries);
@@ -35,6 +42,9 @@ export function buildReport(entries) {
         hit_rate: t.hit_rate,
         cost: t.cost, cost_uncached: t.uncached, saved: t.saved, saved_pct: t.uncached ? t.saved / t.uncached : 0,
         misses: t.misses,
+        by_provider: groupBy(entries, (e) => e.provider ?? "anthropic"),
+        // only once something is tagged; then untagged calls get their own row so the rows add up
+        by_tag: entries.some((e) => e.tag) ? groupBy(entries, (e) => e.tag ?? "untagged") : {},
         top_causes: Object.entries(t.causes).sort((a, b) => b[1] - a[1]).map(([kind, count]) => ({ kind, count })),
         lineages: [...lin.values()].map((es) => ({ session: es[0].session, lineage: es[0].lineage, label: label(es[0]), ...(({ calls, hit_rate }) => ({ calls, hit_rate }))(aggregate(es)) })),
         warnings: [...warnings.entries()].sort((a, b) => b[1] - a[1]).map(([warning, count]) => ({ warning, count })),
@@ -54,6 +64,11 @@ export function formatReport(r) {
         `cost: ${usdPair(r.cost, r.cost_uncached)[0]} (would be ${usdPair(r.cost, r.cost_uncached)[1]} without caching) -> saved ${usd(r.saved)} (${pct(r.saved_pct)})`,
         `misses: ${r.misses}`,
     ];
+    const rows = (g) => Object.entries(g).sort((a, b) => b[1].cost - a[1].cost).map(([k, v]) => `  ${k.padEnd(20)} ${String(v.calls).padStart(5)} calls  hit ${pct(v.hit_rate)}  cost ${usd(v.cost)}  saved ${usd(v.saved)}`);
+    if (Object.keys(r.by_tag).length)
+        out.push("", "by app:", ...rows(r.by_tag));
+    if (Object.keys(r.by_provider).length > 1)
+        out.push("", "by provider:", ...rows(r.by_provider));
     if (r.top_causes.length)
         out.push("", "top causes of misses:", ...r.top_causes.map((c) => `  ${String(c.count).padStart(4)}  ${c.kind}`));
     if (r.lineages.length > 1)

@@ -26,6 +26,8 @@ export interface Ctx {
     provider?: Provider;
     /** OpenAI: requests with this head in the last minute, this one included */
     rate?: number;
+    /** app tag from the proxy's tag header (already validated) */
+    tag?: string;
 }
 export interface EndInfo {
     usage?: Usage;

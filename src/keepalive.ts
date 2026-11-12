@@ -62,7 +62,7 @@ export class KeepAlive {
       ts: Date.now(), kind: "keepalive", session: ctx.sid, lineage: ctx.lineage.id, model: req.model, status: r.status, stream: false,
       usage, hit_rate: hitRate(usage), miss: usage.cache_read_input_tokens === 0,
       causes: usage.cache_read_input_tokens === 0 ? [{ kind: "ttl_expiry", detail: "keep-alive found the cache already cold" }] : [],
-      cost: c, prefix_hash: ctx.snap.prefix, ttl: ctx.snap.ttl, rewrites: [], warnings: [],
+      cost: c, prefix_hash: ctx.snap.prefix, ttl: ctx.snap.ttl, rewrites: [], warnings: [], ...(ctx.tag ? { tag: ctx.tag } : {}),
     });
     if (st.refreshes >= maxN || st.spent + refresh > rewrite) {
       return void this.say(`[cachekit] keep-alive stopped for ${key}: ${st.refreshes} refreshes cost ${usdPair(st.spent, rewrite)[0]}, about one re-write (${usdPair(st.spent, rewrite)[1]}); letting the cache expire`);
