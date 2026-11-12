@@ -24,6 +24,8 @@ export interface Ctx {
     req: Req;
     /** set for OpenAI calls; Anthropic is the default */
     provider?: Provider;
+    /** OpenAI: requests with this head in the last minute, this one included */
+    rate?: number;
 }
 export interface EndInfo {
     usage?: Usage;
@@ -49,6 +51,7 @@ export declare class Tracker {
     private now;
     private sessions;
     private waiting;
+    private recent;
     constructor(cfg: Config, now?: () => number);
     begin(req: Req, sessionHeader?: string, provider?: Provider): Ctx;
     /** Call when the response begins (first byte). Entries become readable from here. */

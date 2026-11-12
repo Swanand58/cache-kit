@@ -2,6 +2,10 @@ import type { Cause, Req, Ttl } from "./types.js";
 export interface Snapshot {
     model: string;
     thinking: string;
+    /** OpenAI request settings that invalidate the cache when they change (per-setting canonical JSON) */
+    settings: Record<string, string>;
+    /** hash of prompt_cache_key; empty when unused */
+    cacheKey: string;
     toolNames: string[];
     toolHashes: Record<string, string>;
     systemLines: string[];

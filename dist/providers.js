@@ -1,3 +1,4 @@
+import { hash } from "./normalize.js";
 const n = (x) => (typeof x === "number" && Number.isFinite(x) ? x : 0);
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 /** OpenAI endpoints get the OpenAI upstream; everything else (including /v1/messages) goes to Anthropic, as before. */
@@ -72,11 +73,35 @@ export function openaiToReq(path, body) {
     const last = messages[messages.length - 1];
     if (!last)
         return;
-    if (!last.content.length)
-        last.content = [{ type: "text", text: "" }];
-    const tail = last.content[last.content.length - 1];
-    tail.cache_control = { type: "ephemeral", ttl: openaiTtl(body) };
+    const cc = { type: "ephemeral", ttl: openaiTtl(body) };
+    // Responses explicit mode: only blocks carrying prompt_cache_breakpoint are cached (none = no caching at all).
+    // ponytail: Chat Completions explicit mode is undocumented, so it is treated like implicit mode.
+    const explicit = !chat && body.prompt_cache_options?.mode === "explicit";
+    if (explicit) {
+        let found;
+        for (const m of messages)
+            for (const b of m.content)
+                if (b.prompt_cache_breakpoint) {
+                    found = b;
+                    delete b.prompt_cache_breakpoint;
+                }
+        if (found)
+            found.cache_control = cc;
+    }
+    else {
+        if (!last.content.length)
+            last.content = [{ type: "text", text: "" }];
+        last.content[last.content.length - 1].cache_control = cc;
+    }
     const tools = Array.isArray(body.tools)
         ? body.tools.map((t) => ({ ...t, name: String(t?.function?.name ?? t?.name ?? t?.type) })) : undefined;
-    return { model: body.model, messages, ...(system !== undefined ? { system } : {}), ...(tools ? { tools } : {}) };
+    const settings = Object.fromEntries(Object.entries(chat
+        ? { reasoning_effort: body.reasoning_effort, verbosity: body.verbosity, response_format: body.response_format, parallel_tool_calls: body.parallel_tool_calls }
+        : { "reasoning.effort": body.reasoning?.effort, "text.verbosity": body.text?.verbosity, "text.format": body.text?.format, parallel_tool_calls: body.parallel_tool_calls }).filter(([, v]) => v !== undefined));
+    return {
+        model: body.model, messages, settings,
+        ...(typeof body.prompt_cache_key === "string" ? { cacheKey: hash(body.prompt_cache_key) } : {}),
+        ...(body.previous_response_id || body.conversation ? { serverState: true } : {}),
+        ...(system !== undefined ? { system } : {}), ...(tools ? { tools } : {}),
+    };
 }

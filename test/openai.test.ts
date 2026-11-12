@@ -230,3 +230,94 @@ test("OpenAI upstream down: 502 in OpenAI's error shape", async () => {
   assert.equal(r.status, 502);
   assert.equal(JSON.parse(r.body.toString()).error.type, "api_error");
 });
+
+// ---- diagnosis (Tracker driven directly) ---------------------------------------------------------------------------
+
+import { Tracker } from "../src/session.js";
+import type { Provider } from "../src/types.js";
+
+const MISS = parseOpenAIUsage({ prompt_tokens: 3000, prompt_tokens_details: { cached_tokens: 0 } });
+const HIT = parseOpenAIUsage({ prompt_tokens: 3000, prompt_tokens_details: { cached_tokens: 2048 } });
+
+function driver() {
+  let now = 1_000_000;
+  const tr = new Tracker(testCfg(), () => now);
+  return {
+    advance: (s: number) => { now += s * 1000; },
+    call(path: string, body: object, usage = MISS, sid?: string) {
+      const req = openaiToReq(path, body)!;
+      const ctx = tr.begin(req, sid, "openai" as Provider);
+      tr.firstByte(ctx);
+      return tr.end(ctx, { usage, status: 200, stream: false });
+    },
+  };
+}
+const CHAT = "/v1/chat/completions", RESP = "/v1/responses";
+const kinds = (e: { causes: { kind: string }[] }) => e.causes.map((c) => c.kind);
+
+test("diagnosis: first call, then a changed reasoning effort is a `settings` miss that names the setting", () => {
+  const d = driver();
+  assert.deepEqual(kinds(d.call(CHAT, chatBody({ reasoning_effort: "low" }))), ["first_call"]);
+  const e = d.call(CHAT, chatBody({ reasoning_effort: "high" }));
+  assert.deepEqual(kinds(e), ["settings"]);
+  assert.match(e.causes[0].detail, /reasoning_effort/);
+  const r = driver();
+  r.call(RESP, respBody({ reasoning: { effort: "low" }, text: { verbosity: "low" } }));
+  const e2 = r.call(RESP, respBody({ reasoning: { effort: "low" }, text: { verbosity: "high" } }));
+  assert.match(e2.causes[0].detail, /text\.verbosity/);
+});
+
+test("diagnosis: a changed prompt_cache_key is `routing`; the key itself is never stored", () => {
+  const d = driver();
+  d.call(CHAT, chatBody({ prompt_cache_key: "tenant-A-SECRET" }));
+  const e = d.call(CHAT, chatBody({ prompt_cache_key: "tenant-B-SECRET" }));
+  assert.deepEqual(kinds(e), ["routing"]);
+  assert.ok(!JSON.stringify(e).includes("SECRET"));
+});
+
+test("diagnosis: more than 15 requests a minute on one prefix adds `routing` to a miss", () => {
+  const d = driver();
+  let last;
+  for (let i = 0; i < 16; i++) last = d.call(CHAT, chatBody());
+  assert.ok(kinds(last!).includes("routing"));
+  assert.match(last!.causes.find((c) => c.kind === "routing")!.detail, /16 requests/);
+  const slow = driver();
+  for (let i = 0; i < 16; i++) { slow.advance(10); last = slow.call(CHAT, chatBody()); }
+  assert.ok(!kinds(last!).includes("routing"), "10 s apart is only 6 a minute");
+});
+
+test("diagnosis: previous_response_id calls are `server_state` and never fake a compaction", () => {
+  const d = driver();
+  d.call(RESP, respBody({ input: [{ role: "user", content: "one" }, { role: "assistant", content: "two" }, { role: "user", content: "three" }] }), MISS, "s1");
+  const e = d.call(RESP, respBody({ previous_response_id: "resp_1", input: "four" }), MISS, "s1");
+  assert.deepEqual(kinds(e), ["server_state"]);
+  // the stateful call did not replace the baseline: the next full call diffs against the last visible prefix
+  const f = d.call(RESP, respBody({ input: [{ role: "user", content: "one" }, { role: "assistant", content: "two" }, { role: "user", content: "three" }, { role: "assistant", content: "x" }, { role: "user", content: "five" }] }), MISS, "s1");
+  assert.ok(!kinds(f).includes("compaction"), "baseline is the last visible prefix, not the one-message stateful call");
+});
+
+test("diagnosis: explicit mode with no breakpoint is `no_breakpoint`; with one it is cached from there", () => {
+  const d = driver();
+  const none = d.call(RESP, respBody({ prompt_cache_options: { mode: "explicit" } }));
+  assert.ok(kinds(none).includes("no_breakpoint"));
+  const withBp = driver();
+  const input = [{ role: "developer", content: [{ type: "input_text", text: filler(4000), prompt_cache_breakpoint: { mode: "explicit" } }] }, { role: "user", content: "hi" }];
+  const req = openaiToReq(RESP, respBody({ prompt_cache_options: { mode: "explicit" }, input }))!;
+  assert.deepEqual(req.messages[0].content[0].cache_control, { type: "ephemeral", ttl: "30m" });
+  assert.ok(!("prompt_cache_breakpoint" in (req.messages[0].content[0] as object)), "breakpoint moved into the marker so moving it is not a rewrite");
+  assert.ok(!kinds(withBp.call(RESP, respBody({ prompt_cache_options: { mode: "explicit" }, input }))).includes("no_breakpoint"));
+});
+
+test("diagnosis: wording for OpenAI is hedged: likely evicted after the typical lifetime, unknown mentions no guarantee", () => {
+  const d = driver();
+  d.call(CHAT, chatBody());
+  d.advance(7200);
+  const e = d.call(CHAT, chatBody());
+  assert.deepEqual(kinds(e), ["ttl_expiry"]);
+  assert.match(e.causes[0].detail, /likely evicted/);
+  const u = driver();
+  u.call(CHAT, chatBody());
+  const e2 = u.call(CHAT, chatBody());
+  assert.deepEqual(kinds(e2), ["unknown"]);
+  assert.match(e2.causes[0].detail, /does not guarantee hits/);
+});
