@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { loadConfig } from "./config.js";
 import { readLog, readSession } from "./metrics.js";
 import { createProxy } from "./proxy.js";
+import { createServe } from "./serve.js";
 import { buildReport, formatLog, formatReport, statusLine, statusReport } from "./report.js";
 import { VERSION } from "./version.js";
 const USAGE = `cachekit <command>
@@ -14,12 +15,13 @@ const USAGE = `cachekit <command>
   report <log.jsonl> [--json] [--app tag]   hit rate, cost saved, top causes of misses
   status [--log file] [--session id] [--json] [--config file]   one line, for a status line or hook
         an unknown --session id (or stdin session_id) prints "no data" / {"calls": 0}; no id = latest session
+  serve [--log file] [--port 8788] [--host 127.0.0.1]   read-only /stats.json and Prometheus /metrics over the log
   mcp [--log file] [--config file]  MCP server (stdio): cache_stats, explain_last_miss
   --version                        print the installed version`;
 const { values: v, positionals: pos } = parseArgs({
     allowPositionals: true,
     options: {
-        port: { type: "string" }, upstream: { type: "string" }, "openai-upstream": { type: "string" }, optimize: { type: "boolean" }, keepalive: { type: "boolean" }, config: { type: "string" },
+        port: { type: "string" }, host: { type: "string" }, upstream: { type: "string" }, "openai-upstream": { type: "string" }, optimize: { type: "boolean" }, keepalive: { type: "boolean" }, config: { type: "string" },
         log: { type: "string" }, json: { type: "boolean" }, session: { type: "string" }, quiet: { type: "boolean" }, lines: { type: "string", short: "n" }, verbose: { type: "boolean", short: "v" }, all: { type: "boolean" }, app: { type: "string" }, help: { type: "boolean", short: "h" }, version: { type: "boolean" },
     },
 });
@@ -44,7 +46,7 @@ async function stdinSession() {
 async function main() {
     if (v.version)
         return void console.log(VERSION);
-    if (!cmd || v.help || !["proxy", "report", "status", "mcp", "log"].includes(cmd))
+    if (!cmd || v.help || !["proxy", "report", "status", "mcp", "log", "serve"].includes(cmd))
         return void console.log(USAGE);
     const overrides = {
         ...(v.log ? { log: { path: v.log } } : {}),
@@ -62,6 +64,15 @@ async function main() {
             console.error(`log: ${cfg.log.path}\nuse:  ANTHROPIC_BASE_URL=http://localhost:${cfg.proxy.port}\n      OPENAI_BASE_URL=http://localhost:${cfg.proxy.port}/v1   (OpenAI calls go to ${cfg.providers.openai.upstream}; observe-only)`);
         });
         process.on("SIGINT", () => void p.close().then(() => process.exit(0)));
+    }
+    else if (cmd === "serve") {
+        const host = v.host ?? "127.0.0.1";
+        const port = Number(v.port) || 8788;
+        createServe({ logPath: cfg.log.path, host }).listen(port, host, () => {
+            console.error(`cachekit serve on http://${host}:${port}  (/stats.json, /metrics)\nlog: ${cfg.log.path}`);
+            if (!["127.0.0.1", "localhost", "::1"].includes(host))
+                console.error(`warning: ${host} is not loopback and there is no login: anyone who can reach this port can read your usage counts and costs (never prompts or keys).`);
+        });
     }
     else if (cmd === "log") {
         const all = byApp(readLog(arg ?? cfg.log.path));

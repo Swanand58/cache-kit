@@ -54,9 +54,9 @@ export declare class CacheClient {
         label?: undefined;
         model?: undefined;
         causes?: undefined;
+        usage?: undefined;
         gap_s?: undefined;
         found: boolean;
-        usage?: undefined;
     };
     /** Summarize old turns in one request. The next call will miss the cache; a warning is logged. */
     compact(history: History, opts?: {
