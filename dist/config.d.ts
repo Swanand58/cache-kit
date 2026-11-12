@@ -23,6 +23,11 @@ export interface Config {
         optimize: boolean;
         session_header: string;
     };
+    providers: {
+        openai: {
+            upstream: string;
+        };
+    };
     keepalive: {
         enabled: boolean;
         margin_seconds: number;

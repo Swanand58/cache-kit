@@ -2,6 +2,7 @@ import { hash, systemText, blocksOf } from "./normalize.js";
 import { addEntry, cost, emptyTotals, hitRate } from "./metrics.js";
 import { diff, snapshot } from "./prefix.js";
 import { TTL_SECONDS } from "./types.js";
+import { modelCfg } from "./config.js";
 const ZERO = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
 // compaction outranks system/tools: /compact swaps the system prompt and rewrites history in one go, and the history is the cause
 const ORDER = ["model", "thinking", "compaction", "tools", "tool_order", "system", "ttl_expiry", "parallel", "no_breakpoint", "below_min", "first_call", "unknown"];
@@ -40,7 +41,7 @@ export class Tracker {
         this.cfg = cfg;
         this.now = now;
     }
-    begin(req, sessionHeader) {
+    begin(req, sessionHeader, provider) {
         const snap = snapshot(req);
         const sid = deriveSession(req, sessionHeader, snap.marker);
         let s = this.sessions.get(sid);
@@ -64,7 +65,7 @@ export class Tracker {
         const key = `${sid}|${best.id}|${snap.head}`;
         const w = this.waiting.get(key) ?? 0;
         this.waiting.set(key, w + 1);
-        return { sid, lineage: best, snap, start: this.now(), parallel: w > 0, streaming: false, done: false, req };
+        return { sid, lineage: best, snap, start: this.now(), parallel: w > 0, streaming: false, done: false, req, provider };
     }
     /** Call when the response begins (first byte). Entries become readable from here. */
     firstByte(ctx) {
@@ -108,7 +109,14 @@ export class Tracker {
             }
             if (ctx.parallel)
                 causes.push({ kind: "parallel", detail: "parallel: same prefix in flight before the first response began; warm the cache with one call before fanning out" });
-            if (!snap.hasMarker)
+            const total = usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens;
+            if (ctx.provider === "openai") {
+                // OpenAI caches automatically (no breakpoints) and older models never report writes: judge by prompt size
+                const min = modelCfg(this.cfg, ctx.req.model).min_tokens;
+                if (total < min)
+                    causes.push({ kind: "below_min", detail: `prompt is ${total} tokens, under the ${min}-token minimum for caching` });
+            }
+            else if (!snap.hasMarker)
                 causes.push({ kind: "no_breakpoint", detail: "request has no cache_control breakpoint" });
             else if (usage.cache_creation_input_tokens === 0 && usage.cache_read_input_tokens === 0)
                 causes.push({ kind: "below_min", detail: "breakpoint set but nothing was written: prefix likely under the model's minimum cacheable size" });
@@ -128,6 +136,8 @@ export class Tracker {
             cost: ok ? cost(this.cfg, ctx.req.model, usage, snap.ttl) : { actual: 0, uncached: 0 },
             prefix_hash: snap.prefix, ttl: snap.ttl, rewrites: info.rewrites ?? [], warnings: info.warnings ?? [],
         };
+        if (ctx.provider)
+            e.provider = ctx.provider;
         if (gap_s !== undefined)
             e.gap_s = gap_s;
         if (info.error)
